@@ -1,0 +1,41 @@
+{
+  "expo": {
+    "name": "SlyWrite Lite",
+    "slug": "slywrite-lite",
+    "version": "0.1.0",
+    "orientation": "default",
+    "scheme": "slywrite-lite",
+    "userInterfaceStyle": "automatic",
+    "newArchEnabled": true,
+    "icon": "./src/assets/shephrdsLibraryWriteWithBackround.png",
+    "ios": {
+      "supportsTablet": true,
+      "icon": "./src/assets/shephrdsLibraryWriteWithBackround.png"
+    },
+    "android": {
+      "package": "com.irikana.slywritelite",
+      "versionCode": 1,
+      "icon": "./src/assets/shephrdsLibraryWriteWithBackround.png",
+      "adaptiveIcon": {
+        "backgroundColor": "#000000",
+        "foregroundImage": "./src/assets/shephrdsLibraryWriteWithBackround.png"
+      }
+    },
+    "web": {
+      "bundler": "metro",
+      "output": "server"
+    },
+    "plugins": [
+      "expo-router",
+      [
+        "expo-image-picker",
+        {
+          "photosPermission": "允许 SlyWrite Lite 访问相册，以便为笔记插入图片。"
+        }
+      ]
+    ],
+    "experiments": {
+      "tsconfigPaths": true
+    }
+  }
+}
