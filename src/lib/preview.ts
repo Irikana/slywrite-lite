@@ -1,7 +1,7 @@
 // 预览渲染管线：Markdown → HTML 文档（供 HtmlPreview 的 WebView 展示）。
 // 流程：双链先换成站内 <a>，marked 渲染，再后处理高亮 / 任务方框 / MathJax。
-// 排版样式：优先用公开站点的网站 CSS（AsyncStorage 缓存 24 小时），失败回退内置 FALLBACK_CSS。
-// 这是 Lite 唯一允许的网络行为，且只读、静默降级，不报错阻塞。
+// 排版样式：优先用在线排版样式（AsyncStorage 缓存 24 小时），失败回退内置 FALLBACK_CSS。
+// 本模块只读、静默降级，不报错阻塞；应用内另一处外部请求是更新检查（src/lib/releases.ts），同样只读。
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { marked } from 'marked';
 import type { NoteMeta } from './frontmatter';

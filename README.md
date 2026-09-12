@@ -9,8 +9,8 @@ SlyWrite（牧羊人图书馆写作管理 App）负责内容生产与发布：Gi
 SlyWrite Lite 与 SlyWrite 互不依赖：
 
 - Lite 没有 GitHub Token，也没有任何写仓库、上传、发布到站点的能力，不联网写任何远端。
-- Lite 与外部网络的唯一交集是可选项：从公开站点 URL 拉取网站 CSS，仅用于预览排版效果；拉取失败时自动回退到内置排版样式，不影响任何功能。
-- 两个应用各自独立构建、独立发布，不共享代码包，也不读写对方的数据。
+- Lite 与外部网络只有两处交集，都是匿名只读 GET、不带任何凭据：可选地从公开 URL 拉取排版 CSS 用于预览（失败回退内置样式）；以及「更新与版本」页读取公开发布信息并下载安装包（不上传任何内容）。
+- 两个应用各自独立构建、独立发布，不共享代码包，也不读写对方的数据。Lite 的界面不出现另一个应用的说明文字。
 
 ## 数据模型
 
@@ -33,6 +33,10 @@ SlyWrite Lite 与 SlyWrite 互不依赖：
 - 回收站：删除先进回收站，可恢复或彻底删除，可清空。
 - 数据管理：整体导出为备份 JSON（可经系统分享发走）、从 `backups/` 选择导入（同名跳过不覆盖）、删除旧备份、存储统计。
 - 11 套主题模式（含跟随系统），深浅色跟随主题设置；扁平化直角风格。
+- 更新与版本（`app/updates.tsx`）：显示本机版本与最新发布版本、发布时间与更新内容，在应用内下载安装包并唤起系统安装界面；
+  同版本安装包已存在时直接进安装，国内网络下先走加速镜像、失败回退直连，未授予安装权限时引导去系统设置开启。
+  入口在首页底部「检查更新」与设置页「关于」段。
+- 界面品牌标识统一由 `src/components/BrandName.tsx` 呈现：主名 SlyWrite 与加边框、带底色的 `Lite` 徽标同排，形成「SlyWrite[Lite]」观感。
 
 ## 已知边界（v0.0.1）
 
@@ -44,9 +48,9 @@ SlyWrite Lite 与 SlyWrite 互不依赖：
 
 ## 目录结构约定
 
-- `app/` — expo-router 路由页面（文件即路由）。
-- `src/lib/` — 存储与解析：`.md` 文件读写、front-matter 解析与序列化、导入导出、CSS 拉取与回退。
-- `src/components/` — 编辑器与只读视图等全部界面组件。
+- `app/` — expo-router 路由页面（文件即路由）；`app/updates.tsx` 为「更新与版本」页。
+- `src/lib/` — 存储与解析：`.md` 文件读写、front-matter 解析与序列化、导入导出、在线样式拉取与回退、更新检查（`releases.ts`）。
+- `src/components/` — 编辑器、只读视图与品牌标识（`BrandName.tsx`）等全部界面组件。
 - `src/store/` — zustand 状态。
 - `src/assets/` — 图标等静态资源（`app.json` 中引用的图片放在这里）。
 - `src/theme.ts` — 色板与主题 hook（`useTheme`、`SPACING`、`FONT`）。
@@ -66,15 +70,20 @@ npm run typecheck # 类型检查（tsc --noEmit），提交前必须通过
 
 推送到 `main`（或手动触发 `Build APK` workflow）后，GitHub Actions 会执行：
 
-1. `npm ci` 安装依赖；
-2. `npx expo prebuild --platform android --no-install --clean` 生成原生工程；
-3. `./gradlew assembleRelease` 产出 release APK；
-4. 上传构建产物（artifact 名为 `slywrite-lite-v{version}-release`）；
-5. 按 `package.json` 的 version 创建 GitHub Release 并挂上 APK（tag 已存在时跳过）。
+1. `npm ci` 安装依赖（`postinstall` 会执行 `scripts/patch-android.js`）；
+2. `node scripts/patch-android.js` 显式再跑一次补丁并检查依赖是否漂到 SDK 53 线；
+3. `npx expo prebuild --platform android --no-install --clean` 生成原生工程；
+4. `./gradlew assembleRelease` 产出 release APK；
+5. 上传构建产物（artifact 名为 `slywrite-lite-v{version}-release`）；
+6. 按 `package.json` 的 version 创建 GitHub Release 并挂上 APK（tag 已存在时跳过）。
 
 注意：workflow 使用 `npm ci` 与 `cache: 'npm'`，仓库必须提交 `package-lock.json`（本地 `npm install` 后一并提交）。
+原生 Expo 依赖一律用 `~` 锁在 Expo SDK 的主版本线，不要用 `^`（详见本目录 `AGENTS.md` 的「构建注意」）。
 
-版本号改动需三处同步：`package.json` 的 `version`、`app.json` 的 `expo.version`、workflow 里的 artifact name。
+版本号采用与 SlyWrite 相同的四位规则（`主.次.修订.构建`，如 `0.0.1.1`）。**日常改动不占版本号**：
+只有作者明确要求发版（说「添加 tag」）时，才自增第四位并同步三处版本号（`package.json` 的 `version`、
+`app.json` 的 `expo.version`、workflow 里的 artifact name）与 `app.json` 的 `android.versionCode`（每次发布 +1），
+然后写 `changelog/CHANGELOG-{version}.md` 再推送。版本号不动时推送 `main` 只会构建产物，Release 步骤因 tag 已存在而跳过。
 
 ## 开发规范
 

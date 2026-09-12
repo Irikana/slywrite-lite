@@ -13,6 +13,7 @@ import {
 } from 'react-native';
 import { router } from 'expo-router';
 import { SPACING, useTheme, type Palette } from '../src/theme';
+import BrandName from '../src/components/BrandName';
 import { STATUS_LABELS, type NoteMeta } from '../src/lib/frontmatter';
 import { createNote } from '../src/lib/notes-vault';
 import { filterNotes, useNotesStore } from '../src/store/notes-store';
@@ -114,7 +115,7 @@ export default function NotebookPage() {
       <Text style={s.emptyText}>
         {query || activeTag
           ? '换个关键词，或点「全部」清空标签过滤'
-          : '笔记以 Markdown 文件保存在本机应用目录里，不依赖账号和网络；点右下角「新建笔记」开始写第一篇。'}
+          : '笔记以 Markdown 文件保存在本机应用目录里，全部离线可读；点右下角「新建笔记」开始写第一篇。'}
       </Text>
     </View>
   );
@@ -124,7 +125,7 @@ export default function NotebookPage() {
       {/* 品牌行 */}
       <View style={s.brandRow}>
         <View style={s.brandLeft}>
-          <Text style={s.brandName}>SlyWrite Lite</Text>
+          <BrandName size="lg" />
           <Text style={s.brandSub}>本地 Markdown 笔记本</Text>
         </View>
         <Text style={s.brandStats}>
@@ -198,6 +199,9 @@ export default function NotebookPage() {
             <Pressable style={s.footerBtn} onPress={() => router.push('/settings')}>
               <Text style={s.footerBtnText}>设置</Text>
             </Pressable>
+            <Pressable style={s.footerBtn} onPress={() => router.push('/updates')}>
+              <Text style={s.footerBtnText}>检查更新</Text>
+            </Pressable>
           </View>
         }
       />
@@ -226,8 +230,7 @@ const createStyles = (COLORS: Palette) =>
       paddingBottom: SPACING.sm,
     },
     brandLeft: { flex: 1 },
-    brandName: { fontSize: 20, fontWeight: '700', color: COLORS.text },
-    brandSub: { fontSize: 12, color: COLORS.textSecondary, marginTop: 2 },
+    brandSub: { fontSize: 12, color: COLORS.textSecondary, marginTop: 4 },
     brandStats: { fontSize: 12, color: COLORS.textLight },
     search: {
       marginHorizontal: SPACING.md,

@@ -14,7 +14,9 @@ import {
 } from 'react-native';
 import Constants from 'expo-constants';
 import * as Sharing from 'expo-sharing';
+import { useRouter } from 'expo-router';
 import { SPACING, useTheme, type Palette } from '../src/theme';
+import BrandName from '../src/components/BrandName';
 import {
   exportBackup,
   deleteBackup,
@@ -51,6 +53,7 @@ function formatTime(ms: number): string {
 export default function SettingsPage() {
   const { colors } = useTheme();
   const s = useMemo(() => createStyles(colors), [colors]);
+  const router = useRouter();
 
   const themeMode = useSettingsStore((st) => st.themeMode);
   const setThemeMode = useSettingsStore((st) => st.setThemeMode);
@@ -251,12 +254,17 @@ export default function SettingsPage() {
 
       {/* 关于 */}
       <Text style={s.sectionTitle}>关于</Text>
-      <Text style={s.paragraph}>SlyWrite Lite v{Constants.expoConfig?.version || '未知'}</Text>
+      <View style={s.aboutRow}>
+        <BrandName size="md" />
+        <Text style={s.aboutVersion}>v{Constants.expoConfig?.version || '未知'}</Text>
+      </View>
       <Text style={s.paragraph}>
-        Lite 负责本地记笔记：无账号、无 Token、不向任何远端写入；预览排版可选地从公开站点拉取 CSS，
-        失败自动回退内置样式。出版与站点发布由 SlyWrite（牧羊人图书馆管理端）负责，
-        两个应用不共享账号与 Token。
+        这是一款只在设备上运行的 Markdown 笔记本：笔记保存在应用自己的目录里，换设备靠上面的备份导出与导入。
+        预览排版优先套用在线排版样式，取不到时自动回退内置排版，不影响阅读与编辑。
       </Text>
+      <Pressable style={s.actionBtn} onPress={() => router.push('/updates')}>
+        <Text style={s.actionBtnText}>检查更新</Text>
+      </Pressable>
 
       <Modal visible={wipeVisible} transparent animationType="fade" onRequestClose={() => setWipeVisible(false)}>
         <View style={s.overlay}>
@@ -303,6 +311,13 @@ const createStyles = (COLORS: Palette) =>
     },
     sectionDanger: { color: COLORS.danger },
     paragraph: { fontSize: 13, color: COLORS.textSecondary, lineHeight: 20, marginBottom: SPACING.sm },
+    aboutRow: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent: 'space-between',
+      marginBottom: SPACING.xs,
+    },
+    aboutVersion: { fontSize: 12, color: COLORS.textLight },
     paragraphMuted: { fontSize: 12, color: COLORS.textLight, marginBottom: SPACING.sm, lineHeight: 18 },
     subTitle: { fontSize: 12, color: COLORS.textLight, marginTop: SPACING.sm, marginBottom: SPACING.xs },
     modeRow: {
