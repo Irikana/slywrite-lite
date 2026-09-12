@@ -32,6 +32,11 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
+      # package.json 里的 postinstall 已会执行；此处显式再跑一次，
+      # 让补丁输出在构建日志里单独可见，便于排查 assembleRelease 失败。
+      - name: Apply Android build patches (Expo SDK 52 compat)
+        run: node scripts/patch-android.js
+
       - name: Generate native Android project
         run: npx expo prebuild --platform android --no-install --clean
 
@@ -42,7 +47,7 @@ jobs:
       - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
-          name: slywrite-lite-v0.1.0-release
+          name: slywrite-lite-v0.0.1-release
           path: android/app/build/outputs/apk/release/app-release.apk
           retention-days: 30
 
@@ -54,11 +59,14 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          if gh api "repos/${{ github.repository }}/git/ref/tags/${{ steps.version.outputs.ver }}" >/dev/null 2>&1; then
-            echo "tag ${{ steps.version.outputs.ver }} 已存在，跳过 Release 创建"
+          TAG="${{ steps.version.outputs.ver }}"
+          # changelog 文件名不带 v 前缀（CHANGELOG-0.0.1.md），从 tag 里剥掉
+          NOTES="changelog/CHANGELOG-${TAG#v}.md"
+          if gh api "repos/${{ github.repository }}/git/ref/tags/${TAG}" >/dev/null 2>&1; then
+            echo "tag ${TAG} 已存在，跳过 Release 创建"
           else
-            gh release create "${{ steps.version.outputs.ver }}" \
+            gh release create "${TAG}" \
               android/app/build/outputs/apk/release/app-release.apk \
-              --title "SlyWrite Lite ${{ steps.version.outputs.ver }}" \
-              --notes "SlyWrite Lite 发布。更新说明见 changelog/CHANGELOG-${{ steps.version.outputs.ver }}.md"
+              --title "SlyWrite Lite ${TAG}" \
+              --notes "SlyWrite Lite 发布。更新说明见 ${NOTES}"
           fi

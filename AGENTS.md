@@ -19,6 +19,14 @@
 - 每次发版写 `changelog/CHANGELOG-{version}.md`。
 - 版本号三处同步：`package.json` 的 `version`、`app.json` 的 `expo.version`、`.github/workflows/build-apk.yml` 的 artifact name（`slywrite-lite-v{version}-release`）。
 
+## 版本号规则（与 SlyWrite 一致）
+
+- 版本线从 **0.0.1** 起（首个 CI 构建失败，0.1.0 从未发布，故重起版本线）。
+- **每次工作只自增第四位数**：`0.0.1` → `0.0.1.1` → `0.0.1.2`……；前三位仅在用户特别强调时才改。
+- `app.json` 的 `android.versionCode` 每次发布 +1（0.0.1 为 1）。
+- 版本号变更后必须同步 `changelog/CHANGELOG-{version}.md`（第四位自增的小版本可合并写进同一修订号的 changelog，跨修订号则新建文件）。
+- Release tag 由 workflow 从 `package.json` 推导（`v{version}`），不要手工建 tag。
+
 ## Lite 硬约束（不可违反）
 
 - **不得引入 GitHub Token 或任何形式的凭据存储**：不安装 `expo-secure-store`，不出现 personal access token、仓库写入 API 调用、上传/发布到站点的任何逻辑。发布是 SlyWrite 的职责，不是 Lite 的职责。
@@ -36,6 +44,18 @@
 
 ## 构建注意
 
-- CI（`.github/workflows/build-apk.yml`）**没有** postinstall 补丁步骤：Lite 不安装 `@expo/dom-webview`，也没有自更新逻辑。若 `assembleRelease` 在 `expo-modules-core` 的 `components.release` 上报错，参照 `shepherd-library-app/scripts/patch-android.js` 的思路在本目录补一个最小补丁，并同步在 workflow 中恢复调用步骤。
+- **原生 Expo 依赖一律用 `~` 锁在本 SDK 的主版本线**，不要用 `^`。`^16.0.6` 会解到 `expo-image-picker@16.1.x`（SDK 53 线），
+  它和它的传递依赖 `expo-image-loader@5.1.x` 的 `android/build.gradle` 写的是 `id 'expo-module-gradle-plugin'`，
+  而 SDK 52 的 `expo prebuild` 生成的 `android/settings.gradle` 不含该插件的 `includeBuild`，
+  `assembleRelease` 必然报 `Plugin [id: 'expo-module-gradle-plugin'] was not found`（2026-09-11 首次 CI 失败即此因）。
+  可用 `npx expo install --check` 复查漂移；改完依赖必须重新生成并提交 `package-lock.json`。
+- CI 在 `npm ci` 之后显式跑 `node scripts/patch-android.js`（`package.json` 的 `postinstall` 亦调用，脚本幂等）：
+  1. 给 `expo-modules-core/android/ExpoModulesCorePlugin.gradle` 的 `from components.release` 包一层
+     `components.findByName('release')` 判空——SDK 52 + AGP 8 的已知问题，症状是配置 `project ':expo'` 时抛
+     `Could not get unknown property 'release' for SoftwareComponent container`；补丁结果与
+     `shepherd-library-app/scripts/patch-android.js` 逐字节一致。
+  2. 扫描被自动链接的模块，若再次出现 SDK 53 才有的 `expo-module-gradle-plugin`，在安装阶段就以中文错误退出，
+     不用等几分钟后只看 Gradle 堆栈。
+- Lite 不安装 `@expo/dom-webview`，也没有自更新逻辑，因此本目录的补丁脚本不含主 App 那两项 dom-webview 处理。
 - `android/`、`ios/` 是 `expo prebuild` 生成物，已在 `.gitignore` 中，不要提交。
 - workflow 依赖 `package-lock.json`（`npm ci` + `cache: 'npm'`），锁文件必须随代码提交。

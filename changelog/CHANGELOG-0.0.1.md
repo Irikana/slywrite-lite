@@ -1,7 +1,10 @@
-# CHANGELOG 0.1.0
+# CHANGELOG 0.0.1
 
 SlyWrite Lite 首个功能版本：完全本地、零账号、零 Token 的 Markdown 笔记本。
 笔记为应用私有目录下的真实 .md 文件（YAML front-matter），可与 Obsidian / Joplin 互通；不联网写仓库、不发布、不自更新。
+
+> 版本线自 **0.0.1** 起，与 SlyWrite 同规则：每次工作只自增第四位数，`app.json` 的 `android.versionCode` 每次发布 +1。
+> 此前的 `0.1.0` 从未发布成功（首个 CI 构建即失败、仓库无 tag），故重起版本线。
 
 ## 新增
 
@@ -39,6 +42,29 @@ SlyWrite Lite 首个功能版本：完全本地、零账号、零 Token 的 Mark
 - 文件信息读取按 expo-file-system SDK 52 的 `FileInfo` 联合类型正确收窄（该类型只有 `modificationTime`，没有 `mtime`；`size` 与时间字段只存在于「文件存在」分支），
   回收站与备份列表不再因取不到字段而类型不通过或读到 undefined。
 - 内置排版样式（`src/lib/fallback-style.ts`）改为 TypeScript 常量导出，避免 `require()` 加载 CSS 资源在 Metro 下的额外不确定性与配置成本。
+
+## 构建与发布（CI 修复）
+
+首次 `Build APK` 工作流运行（run 34618375223）在 `gradlew assembleRelease` 配置阶段失败，Gradle 报了两个错，均已修：
+
+- 依赖漂移：`package.json` 里 `expo-image-picker` 与 `@react-native-async-storage/async-storage` 用了 `^` 区间，
+  锁文件解到 `expo-image-picker@16.1.4` + 传递依赖 `expo-image-loader@5.1.0`（两者属 SDK 53 线）。
+  这两个模块的 `android/build.gradle` 写的是 `id 'expo-module-gradle-plugin'`，而 SDK 52 的 `expo prebuild`
+  生成的 `android/settings.gradle` 里没有该插件的 `includeBuild`，Gradle 报
+  `Plugin [id: 'expo-module-gradle-plugin'] was not found`。
+  改为 `~16.0.6` / `~2.1.2` 后重新生成锁文件，实际解到 `expo-image-picker@16.0.6` + `expo-image-loader@5.0.0`
+  （SDK 52 线，与 SlyWrite 主 App 一致）。
+- `expo-modules-core@2.2.3` 的 `android/ExpoModulesCorePlugin.gradle:95` 在 `afterEvaluate` 里直接
+  `from components.release`，AGP 8 下 release 组件尚未注册，配置 `project ':expo'` 时抛
+  `Could not get unknown property 'release' for SoftwareComponent container`。
+  新增 `scripts/patch-android.js`（`postinstall` 调用，CI 亦显式再跑一次），把该 publication 包进
+  `components.findByName('release')` 判空；补丁与主 App 的同类补丁逐字节一致。
+- 补丁脚本同时会在安装阶段扫描被自动链接的模块，一旦发现有人再次用到 SDK 53 的
+  `expo-module-gradle-plugin`，直接以中文错误信息列出包名与版本并让 `npm ci` 失败，
+  不必再等三分钟后只看 Gradle 堆栈。
+- 复验：`npx expo prebuild --platform android --no-install --clean` 通过，`npx tsc --noEmit` 通过，
+  `npx expo install --check` 仅剩 `@react-native-async-storage/async-storage@2.1.2`（SDK 52 官方表为 1.23.1，
+  主 App 同样用 2.1.x，属可接受偏差）。
 
 ## 硬约束记录
 

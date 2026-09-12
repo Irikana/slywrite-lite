@@ -2,7 +2,7 @@
   "expo": {
     "name": "SlyWrite Lite",
     "slug": "slywrite-lite",
-    "version": "0.1.0",
+    "version": "0.0.1",
     "orientation": "default",
     "scheme": "slywrite-lite",
     "userInterfaceStyle": "automatic",
