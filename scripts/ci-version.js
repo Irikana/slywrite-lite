@@ -21,7 +21,12 @@ const appPath = path.join(root, 'app.json');
 const pkg = JSON.parse(fs.readFileSync(pkgPath, 'utf8'));
 // 兼容四段存量（如 0.0.15.11）：取前三段作为正式版本
 const base = pkg.version.split('.').slice(0, 3).join('.');
-const full = `${base}.${buildNo}`;
+// 第四位构建号必须写成 semver 前发布标识（A.B.C-N）：
+// electron-builder 对 package.json version 做 semver 校验，四段点分号（0.0.1.2）
+// 直接报 Invalid version 使 PC 打包秒败（2026-09-14 CI run 34805680213 实证）。
+// Android APK 不受此限制（expo 只把 version 字符串写进应用标签），但为全软件统一，
+// 注入脚本一律产出 A.B.C-N 形式；展示时可按 '-' 拆分还原四段语义。
+const full = `${base}-${buildNo}`;
 
 pkg.version = full;
 fs.writeFileSync(pkgPath, JSON.stringify(pkg, null, 2) + '\n');

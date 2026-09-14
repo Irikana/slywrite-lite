@@ -25,9 +25,10 @@
 - **仓库内版本字段只维护三位正式版本**：`package.json.version` 与 `app.json.expo.version` = `0.0.1`。
   日常改动不动版本号、不打 tag、不建 Release；push 与手动触发产生的都是**测试构建**。
 - **第四位 X 由 CI 注入，不提交**：`scripts/ci-version.js <run_number>` 在构建开始时把
-  `A.B.C.<run_number>` 写进 package.json / app.json（versionCode 也用构建号填充），
-  产物命名 `slywrite-lite-v{A.B.C.X}-release` / `slywrite-lite-{A.B.C.X}-pc`，
-  所以 artifact 与「关于」页显示的永远是完整四段，而仓库里永远是三段。
+  `A.B.C-<run_number>`（semver 前发布写法，**不是** `A.B.C.X`，electron-builder 拒收四段点分号）
+  写进 package.json / app.json（versionCode 也用构建号填充），
+  产物命名 `slywrite-lite-v{A.B.C-N}-release` / `slywrite-lite-{A.B.C-N}-pc`，
+  所以 artifact 与「关于」页显示的永远是「正式版本-构建号」，而仓库里永远是三段。
   本地 `npm run desktop` / `build:desktop` 不注入，显示三段。
 - **正式发布**（作者明确说「正式发布 / 添加 tag」才做）：
   1. 第三位 +1（如 `0.0.1` → `0.0.2`），同步 package.json 与 app.json 两处；
