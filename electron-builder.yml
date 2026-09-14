@@ -1,0 +1,32 @@
+# SlyWrite Lite 桌面端打包配置（electron-builder）。
+# 输入：build:web 产出的 dist-web/ + desktop/ 壳代码；产物：desktop-build/ 下的便携版 exe。
+# 与 APK 流水线完全独立：不共享步骤、不共享产物名，仅共用 package.json 的版本号。
+appId: com.irikana.slywritelite.desktop
+productName: SlyWrite Lite
+
+# 打包内容白名单：壳 + Web 产物；RN/Expo 的 node_modules 对桌面端是死重，全部排除
+files:
+  - desktop/**/*
+  - dist-web/**/*
+  - package.json
+  - '!node_modules/**/*'
+
+# extraMetadata：把根 package.json 的 main 覆盖为桌面壳入口（根 main 供 Expo 使用，两者互不干扰）
+extraMetadata:
+  main: desktop/main.js
+
+# 关闭 asar：net.fetch(file://) 对 asar 内路径不可用，且本应用无 Node 依赖需要归档
+asar: false
+
+directories:
+  output: desktop-build
+  buildResources: desktop/buildResources
+
+win:
+  target:
+    - portable
+  icon: src/assets/shephrdsLibraryWriteWithBackround.png
+
+portable:
+  artifactName: slywrite-lite-${version}-win-${arch}.exe
+  requestExecutionLevel: user

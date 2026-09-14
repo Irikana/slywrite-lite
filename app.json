@@ -14,7 +14,9 @@
     },
     "android": {
       "package": "com.irikana.slywritelite",
-      "permissions": ["android.permission.REQUEST_INSTALL_PACKAGES"],
+      "permissions": [
+        "android.permission.REQUEST_INSTALL_PACKAGES"
+      ],
       "versionCode": 1,
       "icon": "./src/assets/shephrdsLibraryWriteWithBackround.png",
       "adaptiveIcon": {
@@ -24,7 +26,7 @@
     },
     "web": {
       "bundler": "metro",
-      "output": "server"
+      "output": "static"
     },
     "plugins": [
       "expo-router",

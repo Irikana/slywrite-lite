@@ -29,6 +29,8 @@ export default function RootLayout() {
           headerTitleStyle: { fontWeight: '600' },
           headerTitleAlign: 'center',
           contentStyle: { backgroundColor: colors.bgSubtle },
+          // 页间转场：右滑进入（Android 原生栈默认无动画，统一显式声明；Web 端自动降级）
+          animation: 'slide_from_right',
         }}
       >
         <Stack.Screen name="index" options={{ title: '笔记本' }} />

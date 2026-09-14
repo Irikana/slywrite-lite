@@ -16,8 +16,9 @@ import {
   View,
 } from 'react-native';
 import { router, useLocalSearchParams } from 'expo-router';
-import * as Sharing from 'expo-sharing';
+import { presentFile } from '../src/lib/file-export';
 import { SPACING, useTheme, type Palette } from '../src/theme';
+import PressFX from '../src/components/PressFX';
 import {
   STATUS_LABELS,
   type Note,
@@ -325,12 +326,11 @@ export default function NotePage() {
     setBusy(true);
     try {
       const uri = await prepareShareFile(note.file);
-      const available = await Sharing.isAvailableAsync();
-      if (!available) {
+      const status = await presentFile(uri, 'text/markdown', '导出此篇笔记');
+      if (status === 'unavailable') {
         Alert.alert('无法分享', '本机没有可用的分享渠道。备份文件仍在应用目录 backups/ 与 notes/ 中。');
-        return;
       }
-      await Sharing.shareAsync(uri, { mimeType: 'text/markdown', dialogTitle: '导出此篇笔记' });
+      // status === 'canceled'：用户在另存对话框中取消，不打扰
     } catch (e) {
       Alert.alert('导出失败', e instanceof Error ? e.message : '未知原因');
     } finally {
@@ -532,15 +532,15 @@ export default function NotePage() {
 
       {/* 底部操作 */}
       <View style={s.bottomBar}>
-        <Pressable style={s.bottomBtn} onPress={() => router.back()}>
+        <PressFX style={s.bottomBtn} onPress={() => router.back()}>
           <Text style={s.bottomBtnText}>返回</Text>
-        </Pressable>
-        <Pressable style={[s.bottomBtn, s.bottomBtnDanger]} onPress={handleDelete}>
+        </PressFX>
+        <PressFX style={[s.bottomBtn, s.bottomBtnDanger]} onPress={handleDelete}>
           <Text style={[s.bottomBtnText, s.bottomBtnTextDanger]}>删除</Text>
-        </Pressable>
-        <Pressable style={s.bottomBtn} onPress={() => setMenuVisible(true)}>
+        </PressFX>
+        <PressFX style={s.bottomBtn} onPress={() => setMenuVisible(true)}>
           <Text style={s.bottomBtnText}>菜单</Text>
-        </Pressable>
+        </PressFX>
       </View>
 
       {/* 菜单 */}
@@ -555,7 +555,7 @@ export default function NotePage() {
                 handleShare();
               }}
             >
-              <Text style={s.dialogItemText}>通过系统分享导出此篇</Text>
+              <Text style={s.dialogItemText}>导出此篇笔记（.md 文件）</Text>
             </Pressable>
             <Pressable
               style={s.dialogItem}

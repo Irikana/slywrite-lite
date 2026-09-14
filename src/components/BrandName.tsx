@@ -30,9 +30,22 @@ function metrics(scale: number) {
 
 const SIZES: Record<BrandSize, number> = { sm: 1, md: 1.15, lg: 1.43 };
 
+// 徽标专用银灰色板：刻意不跟随主题强调色，让「Lite」在任何主题下都呈中性灰/银观感，
+// 与主名（SlyWrite，跟随主题色）形成「本体 / 衍生版」的视觉层级。
+const BADGE_LIGHT = {
+  text: '#78818a',
+  bg: '#eef0f2',
+  border: '#a8b0b8',
+};
+const BADGE_DARK = {
+  text: '#b8c0c8',
+  bg: '#2a2f36',
+  border: '#6a727c',
+};
+
 export default function BrandName({ size = 'md', style }: BrandNameProps) {
-  const { colors } = useTheme();
-  const s = createStyles(colors);
+  const { colors, isDark } = useTheme();
+  const s = createStyles(colors, isDark ? BADGE_DARK : BADGE_LIGHT);
   const m = metrics(SIZES[size]);
 
   return (
@@ -56,7 +69,9 @@ export default function BrandName({ size = 'md', style }: BrandNameProps) {
   );
 }
 
-const createStyles = (COLORS: Palette) =>
+type BadgeColors = { text: string; bg: string; border: string };
+
+const createStyles = (COLORS: Palette, BADGE: BadgeColors) =>
   StyleSheet.create({
     row: {
       flexDirection: 'row',
@@ -69,11 +84,11 @@ const createStyles = (COLORS: Palette) =>
       includeFontPadding: false,
     },
     badge: {
-      color: COLORS.accent,
+      color: BADGE.text,
       fontWeight: '700',
       letterSpacing: 0.6,
-      backgroundColor: COLORS.infoBg,
-      borderColor: COLORS.accent,
+      backgroundColor: BADGE.bg,
+      borderColor: BADGE.border,
       includeFontPadding: false,
     },
   });

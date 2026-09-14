@@ -1,10 +1,13 @@
-// 笔记仓库：应用私有目录下的真实 .md 文件读写（expo-file-system 旧版 API，SDK 52）。
-// 目录结构：
-//   documents/slywrite-lite/notes/    笔记正文（.md，带 YAML front-matter）
-//   documents/slywrite-lite/.trash/   回收站（删除的 .md 移入，不直接销毁）
-//   documents/slywrite-lite/backups/  整体导出的 JSON 备份
+// 笔记仓库：带 YAML front-matter 的真实 .md 文件读写。业务逻辑单一来源，平台差异全部下沉到 vault-fs：
+//   原生端  vault-fs.ts     —— expo-file-system，应用私有目录
+//   桌面端  vault-fs.web.ts —— Electron 壳，userData/vault/ 下真实文件
+//   浏览器  vault-fs.web.ts —— 无壳时 localStorage 虚拟仓库（开发/降级）
+// 目录结构（虚拟路径，相对仓库根）：
+//   notes/    笔记正文（.md，带 YAML front-matter）
+//   .trash/   回收站（删除的 .md 移入，不直接销毁）
+//   backups/  整体导出的 JSON 备份
+//   share/    导出/分享临时区（原生端映射系统缓存目录）
 // 约定：本层只谈文件与解析，所有失败抛出带中文说明的 Error，由界面直接展示。
-import * as FileSystem from 'expo-file-system';
 import {
   type Note,
   type NoteMeta,
@@ -13,26 +16,41 @@ import {
   serializeNote,
   todayDate,
 } from './frontmatter';
+import {
+  copyText,
+  ensureDir,
+  listDir,
+  movePath,
+  readText,
+  removePath,
+  statPath,
+  writeText,
+  type VaultStat,
+} from './vault-fs';
 
-const ROOT_DIR = `${FileSystem.documentDirectory}slywrite-lite/`;
-export const NOTES_DIR = `${ROOT_DIR}notes/`;
-export const TRASH_DIR = `${ROOT_DIR}.trash/`;
-export const BACKUPS_DIR = `${ROOT_DIR}backups/`;
+export const NOTES_DIR = 'notes/';
+export const TRASH_DIR = '.trash/';
+export const BACKUPS_DIR = 'backups/';
+const SHARE_DIR = 'share/';
 
 /** 备份文件格式版本（导入时校验） */
 const BACKUP_APP_TAG = 'slywrite-lite';
 const BACKUP_VERSION = 1;
 
-function noteUri(file: string): string {
+function noteRel(file: string): string {
   return `${NOTES_DIR}${file.split('/').pop()}`;
 }
 
-function trashUri(name: string): string {
+function trashRel(name: string): string {
   return `${TRASH_DIR}${name.split('/').pop()}`;
 }
 
-function backupUri(name: string): string {
+function backupRel(name: string): string {
   return `${BACKUPS_DIR}${name.split('/').pop()}`;
+}
+
+function shareRel(name: string): string {
+  return `${SHARE_DIR}${name.split('/').pop()}`;
 }
 
 function isMarkdown(name: string): boolean {
@@ -61,10 +79,7 @@ async function guard<T>(action: string, fn: () => Promise<T>): Promise<T> {
 export async function ensureRoot(): Promise<void> {
   await guard('创建笔记目录', async () => {
     for (const dir of [NOTES_DIR, TRASH_DIR, BACKUPS_DIR]) {
-      const info = await FileSystem.getInfoAsync(dir);
-      if (!info.exists) {
-        await FileSystem.makeDirectoryAsync(dir, { intermediates: true });
-      }
+      await ensureDir(dir);
     }
   });
 }
@@ -84,13 +99,11 @@ function compareMeta(a: NoteMeta, b: NoteMeta): number {
 /** 列出全部笔记元数据：置顶优先，其余按更新时间倒序。单个文件读取失败时跳过该文件（不让一篇坏文件锁死整个列表）。 */
 export async function listNotes(): Promise<NoteMeta[]> {
   await ensureRoot();
-  const entries = await guard('读取笔记目录', () => FileSystem.readDirectoryAsync(NOTES_DIR));
+  const entries = await guard('读取笔记目录', () => listDir(NOTES_DIR));
   const metas: NoteMeta[] = [];
   for (const name of entries.filter(isMarkdown)) {
     try {
-      const raw = await FileSystem.readAsStringAsync(noteUri(name), {
-        encoding: FileSystem.EncodingType.UTF8,
-      });
+      const raw = await readText(noteRel(name));
       metas.push(toMeta(parseNote(raw, name)));
     } catch {
       // 单篇损坏不阻断列表；打开该篇时 readNote 会给出中文错误
@@ -102,9 +115,7 @@ export async function listNotes(): Promise<NoteMeta[]> {
 /** 读取单篇笔记全文 */
 export async function readNote(file: string): Promise<Note> {
   await ensureRoot();
-  const raw = await guard(`读取笔记「${file}」`, () =>
-    FileSystem.readAsStringAsync(noteUri(file), { encoding: FileSystem.EncodingType.UTF8 }),
-  );
+  const raw = await guard(`读取笔记「${file}」`, () => readText(noteRel(file)));
   return parseNote(raw, file);
 }
 
@@ -141,11 +152,7 @@ export async function createNote(seed?: CreateSeed): Promise<Note> {
     words: 0,
   };
   const full = parseNote(serializeNote(note), file);
-  await guard('创建笔记', () =>
-    FileSystem.writeAsStringAsync(noteUri(file), serializeNote(full), {
-      encoding: FileSystem.EncodingType.UTF8,
-    }),
-  );
+  await guard('创建笔记', () => writeText(noteRel(file), serializeNote(full)));
   return full;
 }
 
@@ -154,9 +161,7 @@ export async function saveNote(note: Note): Promise<Note> {
   await ensureRoot();
   const refreshed = parseNote(serializeNote({ ...note, updated: nowStamp() }), note.file);
   await guard(`保存笔记「${note.title || note.file}」`, () =>
-    FileSystem.writeAsStringAsync(noteUri(note.file), serializeNote(refreshed), {
-      encoding: FileSystem.EncodingType.UTF8,
-    }),
+    writeText(noteRel(note.file), serializeNote(refreshed)),
   );
   return refreshed;
 }
@@ -166,28 +171,25 @@ export async function deleteNote(file: string): Promise<void> {
   await ensureRoot();
   const base = file.split('/').pop() || file;
   let target = base;
-  const trashInfo = await guard('检查回收站', () => FileSystem.getInfoAsync(trashUri(target)));
+  const trashInfo = await guard('检查回收站', () => statPath(trashRel(target)));
   if (trashInfo.exists) {
     const stem = base.replace(/\.md$/i, '');
     target = `${stem}-${Date.now()}.md`;
   }
-  await guard(`删除笔记「${base}」`, () =>
-    FileSystem.moveAsync({ from: noteUri(base), to: trashUri(target) }),
-  );
+  await guard(`删除笔记「${base}」`, () => movePath(noteRel(base), trashRel(target)));
 }
 
 /**
- * getInfoAsync 返回的是「存在 / 不存在」两态联合类型，size 与 modificationTime 只存在于
- * 存在分支上（SDK 52 没有 mtime 字段），统一从这里取值以避开联合类型的字段访问。
- * 返回毫秒时间戳；不存在或字段缺失给 0。
+ * VaultStat 是平台层统一后的文件信息（size 字节数 / mtimeMs 毫秒时间戳），
+ * 不存在时两值均为 0。统一从 statPath 取值，避免各平台联合类型字段差异。
  */
-function fileMtimeMs(info: FileSystem.FileInfo): number {
-  return info.exists ? (info.modificationTime || 0) * 1000 : 0;
+function fileMtimeMs(stat: VaultStat): number {
+  return stat.exists ? stat.mtimeMs : 0;
 }
 
 /** 同上，取字节数；不存在给 0 */
-function fileSize(info: FileSystem.FileInfo): number {
-  return info.exists ? info.size : 0;
+function fileSize(stat: VaultStat): number {
+  return stat.exists ? stat.size : 0;
 }
 
 export interface TrashItem {
@@ -199,10 +201,10 @@ export interface TrashItem {
 /** 回收站列表：按删除时间倒序 */
 export async function listTrash(): Promise<TrashItem[]> {
   await ensureRoot();
-  const entries = await guard('读取回收站', () => FileSystem.readDirectoryAsync(TRASH_DIR));
+  const entries = await guard('读取回收站', () => listDir(TRASH_DIR));
   const items: TrashItem[] = [];
   for (const name of entries.filter(isMarkdown)) {
-    const info = await guard(`读取「${name}」信息`, () => FileSystem.getInfoAsync(trashUri(name)));
+    const info = await guard(`读取「${name}」信息`, () => statPath(trashRel(name)));
     items.push({ name, deletedAt: fileMtimeMs(info) });
   }
   return items.sort((a, b) => b.deletedAt - a.deletedAt);
@@ -211,18 +213,16 @@ export async function listTrash(): Promise<TrashItem[]> {
 /** 从回收站恢复；notes 目录已有同名文件时报错（不覆盖） */
 export async function restoreTrash(name: string): Promise<void> {
   await ensureRoot();
-  const exists = await guard('检查同名笔记', () => FileSystem.getInfoAsync(noteUri(name)));
+  const exists = await guard('检查同名笔记', () => statPath(noteRel(name)));
   if (exists.exists) {
     throw new Error(`恢复「${name}」失败：笔记目录已存在同名文件，请先处理现有笔记`);
   }
-  await guard(`恢复「${name}」`, () =>
-    FileSystem.moveAsync({ from: trashUri(name), to: noteUri(name) }),
-  );
+  await guard(`恢复「${name}」`, () => movePath(trashRel(name), noteRel(name)));
 }
 
 /** 彻底删除回收站中的一个文件 */
 export async function deleteForever(name: string): Promise<void> {
-  await guard(`彻底删除「${name}」`, () => FileSystem.deleteAsync(trashUri(name)));
+  await guard(`彻底删除「${name}」`, () => removePath(trashRel(name)));
 }
 
 /**
@@ -230,9 +230,7 @@ export async function deleteForever(name: string): Promise<void> {
  * 直接删文件、不进回收站——回收站里存空壳只会干扰真正需要找回的内容。
  */
 export async function discardBlankNote(file: string): Promise<void> {
-  await guard(`删除空笔记「${file}」`, () =>
-    FileSystem.deleteAsync(noteUri(file), { idempotent: true }),
-  );
+  await guard(`删除空笔记「${file}」`, () => removePath(noteRel(file), true));
 }
 
 /** 清空回收站 */
@@ -240,12 +238,13 @@ export async function emptyTrash(): Promise<void> {
   await ensureRoot();
   const items = await listTrash();
   for (const item of items) {
-    await guard(`彻底删除「${item.name}」`, () => FileSystem.deleteAsync(trashUri(item.name)));
+    await guard(`彻底删除「${item.name}」`, () => removePath(trashRel(item.name)));
   }
 }
 
 export interface BackupFile {
   name: string;
+  /** 仓库内不透明路径（供 importBackup / presentFile 回传，勿在界面外使用） */
   uri: string;
   /** 字节数 */
   size: number;
@@ -254,13 +253,13 @@ export interface BackupFile {
 }
 
 async function listJsonFiles(dir: string): Promise<BackupFile[]> {
-  const entries = await guard('读取备份目录', () => FileSystem.readDirectoryAsync(dir));
+  const entries = await guard('读取备份目录', () => listDir(dir));
   const files: BackupFile[] = [];
   for (const name of entries.filter((n) => n.endsWith('.json'))) {
-    const info = await guard(`读取「${name}」信息`, () => FileSystem.getInfoAsync(backupUri(name)));
+    const info = await guard(`读取「${name}」信息`, () => statPath(`${dir}${name}`));
     files.push({
       name,
-      uri: backupUri(name),
+      uri: `${dir}${name}`,
       size: fileSize(info),
       exportedAt: fileMtimeMs(info),
     });
@@ -268,7 +267,7 @@ async function listJsonFiles(dir: string): Promise<BackupFile[]> {
   return files.sort((a, b) => b.exportedAt - a.exportedAt);
 }
 
-/** 备份文件清单（应用目录 backups/ 下的 .json，按导出时间倒序） */
+/** 备份文件清单（backups/ 下的 .json，按导出时间倒序） */
 export function listBackups(): Promise<BackupFile[]> {
   return (async () => {
     await ensureRoot();
@@ -285,23 +284,19 @@ export async function deleteBackup(name: string): Promise<void> {
     throw new Error('备份文件名不合法，已拒绝删除');
   }
   await ensureRoot();
-  await guard(`删除备份「${name}」`, () =>
-    FileSystem.deleteAsync(backupUri(name), { idempotent: true }),
-  );
+  await guard(`删除备份「${name}」`, () => removePath(backupRel(name), true));
 }
 
 /**
  * 整体导出：全部笔记序列化为一个 JSON 文件（{app, version, exportedAt, notes:[{file, raw}]}），
- * 写入 backups/ 并返回文件 uri（供 expo-sharing 分享）。
+ * 写入 backups/ 并返回仓库路径（供 presentFile 分享 / 另存）。
  */
 export async function exportBackup(): Promise<string> {
   await ensureRoot();
-  const entries = await guard('读取笔记目录', () => FileSystem.readDirectoryAsync(NOTES_DIR));
+  const entries = await guard('读取笔记目录', () => listDir(NOTES_DIR));
   const notes: { file: string; raw: string }[] = [];
   for (const name of entries.filter(isMarkdown)) {
-    const raw = await guard(`读取笔记「${name}」`, () =>
-      FileSystem.readAsStringAsync(noteUri(name), { encoding: FileSystem.EncodingType.UTF8 }),
-    );
+    const raw = await guard(`读取笔记「${name}」`, () => readText(noteRel(name)));
     notes.push({ file: name, raw });
   }
   const payload = {
@@ -312,12 +307,8 @@ export async function exportBackup(): Promise<string> {
   };
   const stamp = `${todayDate().replace(/-/g, '')}-${String(Date.now()).slice(-6)}`;
   const name = `slywrite-lite-backup-${stamp}.json`;
-  await guard('写入备份文件', () =>
-    FileSystem.writeAsStringAsync(backupUri(name), JSON.stringify(payload, null, 2), {
-      encoding: FileSystem.EncodingType.UTF8,
-    }),
-  );
-  return backupUri(name);
+  await guard('写入备份文件', () => writeText(backupRel(name), JSON.stringify(payload, null, 2)));
+  return backupRel(name);
 }
 
 export interface ImportResult {
@@ -326,14 +317,12 @@ export interface ImportResult {
 }
 
 /**
- * 整体导入：读取备份 JSON。同名 file 已存在则跳过（绝不覆盖现有笔记）；
+ * 整体导入：读取备份 JSON（exportBackup 生成的仓库路径）。同名 file 已存在则跳过（绝不覆盖现有笔记）；
  * 导入的正文一律重新过 serializeNote 规范化。
  */
 export async function importBackup(uri: string): Promise<ImportResult> {
   await ensureRoot();
-  const raw = await guard('读取备份文件', () =>
-    FileSystem.readAsStringAsync(uri, { encoding: FileSystem.EncodingType.UTF8 }),
-  );
+  const raw = await guard('读取备份文件', () => readText(uri));
   let data: unknown;
   try {
     data = JSON.parse(raw);
@@ -345,7 +334,7 @@ export async function importBackup(uri: string): Promise<ImportResult> {
     throw new Error('导入失败：这不是 SlyWrite Lite 的备份文件');
   }
   const existing = new Set(
-    (await guard('读取笔记目录', () => FileSystem.readDirectoryAsync(NOTES_DIR))).filter(isMarkdown),
+    (await guard('读取笔记目录', () => listDir(NOTES_DIR))).filter(isMarkdown),
   );
   let added = 0;
   let skipped = 0;
@@ -366,11 +355,7 @@ export async function importBackup(uri: string): Promise<ImportResult> {
       continue;
     }
     const note = parseNote(item.raw, file);
-    await guard(`导入笔记「${file}」`, () =>
-      FileSystem.writeAsStringAsync(noteUri(file), serializeNote(note), {
-        encoding: FileSystem.EncodingType.UTF8,
-      }),
-    );
+    await guard(`导入笔记「${file}」`, () => writeText(noteRel(file), serializeNote(note)));
     existing.add(file);
     added += 1;
   }
@@ -388,7 +373,7 @@ export async function storageStats(): Promise<StorageStats> {
   const metas = await listNotes();
   let bytes = 0;
   for (const meta of metas) {
-    const info = await guard(`读取「${meta.file}」信息`, () => FileSystem.getInfoAsync(noteUri(meta.file)));
+    const info = await guard(`读取「${meta.file}」信息`, () => statPath(noteRel(meta.file)));
     bytes += fileSize(info);
   }
   return {
@@ -399,20 +384,10 @@ export async function storageStats(): Promise<StorageStats> {
 }
 
 /**
- * 把单篇笔记复制到缓存目录并返回 uri（供系统分享「导出此篇」）。
- * 缓存目录不参与笔记管理，随时可被系统清理。
+ * 把单篇笔记复制到分享临时区并返回仓库路径（供 presentFile「导出此篇」）。
+ * 临时区不参与笔记管理，随时可被系统或用户清理。
  */
 export async function prepareShareFile(file: string): Promise<string> {
   const note = await readNote(file);
-  const dir = `${FileSystem.cacheDirectory}slywrite-lite-share/`;
-  await guard('创建分享临时目录', async () => {
-    const info = await FileSystem.getInfoAsync(dir);
-    if (!info.exists) await FileSystem.makeDirectoryAsync(dir, { intermediates: true });
-  });
-  const target = `${dir}${note.file}`;
-  const content = serializeNote(note);
-  await guard('写入分享临时文件', () =>
-    FileSystem.writeAsStringAsync(target, content, { encoding: FileSystem.EncodingType.UTF8 }),
-  );
-  return target;
+  return guard('准备分享文件', () => copyText(noteRel(note.file), shareRel(note.file)).then(() => shareRel(note.file)));
 }

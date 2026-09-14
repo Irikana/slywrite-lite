@@ -13,10 +13,11 @@ import {
   View,
 } from 'react-native';
 import Constants from 'expo-constants';
-import * as Sharing from 'expo-sharing';
+import { presentFile } from '../src/lib/file-export';
 import { useRouter } from 'expo-router';
 import { SPACING, useTheme, type Palette } from '../src/theme';
 import BrandName from '../src/components/BrandName';
+import PressFX from '../src/components/PressFX';
 import {
   exportBackup,
   deleteBackup,
@@ -89,10 +90,11 @@ export default function SettingsPage() {
     try {
       const uri = await exportBackup();
       await reloadSide();
-      const available = await Sharing.isAvailableAsync();
-      if (available) {
-        await Sharing.shareAsync(uri, { mimeType: 'application/json', dialogTitle: '发送备份文件' });
+      const status = await presentFile(uri, 'application/json', '发送备份文件');
+      if (status === 'shared') {
         setMessage('备份已生成，可通过分享保存到其他设备。');
+      } else if (status === 'canceled') {
+        setMessage('备份已生成到应用目录 backups/（已取消另存）。');
       } else {
         setMessage('备份已生成到应用目录 backups/（本机没有可用分享渠道）。');
       }
@@ -200,9 +202,9 @@ export default function SettingsPage() {
         （保存在应用目录 backups/，可通过系统分享发走），换机后把该文件放回 backups/ 再选择导入。
         导入时同名笔记跳过，不覆盖。
       </Text>
-      <Pressable style={s.actionBtn} onPress={handleExport} disabled={busy}>
+      <PressFX style={s.actionBtn} onPress={handleExport} disabled={busy}>
         <Text style={s.actionBtnText}>{busy ? '处理中…' : '导出全部备份'}</Text>
-      </Pressable>
+      </PressFX>
       <Text style={s.subTitle}>可导入的备份（应用目录 backups/）</Text>
       {backups.length === 0 ? (
         <Text style={s.paragraphMuted}>还没有备份文件。点上方「导出全部备份」生成第一份。</Text>
@@ -241,7 +243,7 @@ export default function SettingsPage() {
       {/* 危险区 */}
       <Text style={[s.sectionTitle, s.sectionDanger]}>危险区</Text>
       <Text style={s.paragraph}>清空全部笔记：把当前所有笔记移入回收站（仍可恢复），不是直接销毁。</Text>
-      <Pressable
+      <PressFX
         style={[s.actionBtn, s.actionDanger]}
         disabled={busy}
         onPress={() => {
@@ -250,7 +252,7 @@ export default function SettingsPage() {
         }}
       >
         <Text style={[s.actionBtnText, s.actionDangerText]}>清空全部笔记</Text>
-      </Pressable>
+      </PressFX>
 
       {/* 关于 */}
       <Text style={s.sectionTitle}>关于</Text>
@@ -262,9 +264,9 @@ export default function SettingsPage() {
         这是一款只在设备上运行的 Markdown 笔记本：笔记保存在应用自己的目录里，换设备靠上面的备份导出与导入。
         预览排版优先套用在线排版样式，取不到时自动回退内置排版，不影响阅读与编辑。
       </Text>
-      <Pressable style={s.actionBtn} onPress={() => router.push('/updates')}>
+      <PressFX style={s.actionBtn} onPress={() => router.push('/updates')}>
         <Text style={s.actionBtnText}>检查更新</Text>
-      </Pressable>
+      </PressFX>
 
       <Modal visible={wipeVisible} transparent animationType="fade" onRequestClose={() => setWipeVisible(false)}>
         <View style={s.overlay}>

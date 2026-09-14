@@ -1,0 +1,7 @@
+{
+  "name": "slywrite-lite-desktop",
+  "version": "1.0.0",
+  "private": true,
+  "main": "main.js",
+  "description": "SlyWrite Lite desktop shell wrapper entry (dev: electron desktop)"
+}

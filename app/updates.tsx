@@ -1,23 +1,22 @@
-// 更新与版本页：检查本机版本与最新发布版本的差异，在应用内下载安装包并唤起系统安装界面。
+// 更新与版本页：检查本机版本与最新发布版本的差异。
+//   Android：应用内下载安装包并唤起系统安装界面（8 起需「安装未知应用」授权，
+//     app.json 已声明 REQUEST_INSTALL_PACKAGES，未授权时引导去系统设置或退回浏览器下载）；
+//   桌面（PC 版）：无 APK 安装语义，按钮改为打开系统浏览器进入发布页手动下载。
+// 具体安装动作全部下沉到 src/lib/installer(.web).ts，本页不直接引用任何平台模块。
 // 全程只有匿名只读请求：读取最新发布信息、下载附件，不上传任何内容。
-// Android 8 起安装需要「安装未知应用」授权（app.json 已声明 REQUEST_INSTALL_PACKAGES），
-// 未授权时引导用户去系统设置开启，或退回浏览器下载。
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
-import { ActivityIndicator, Alert, Linking, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
-import * as FileSystem from 'expo-file-system';
-import * as IntentLauncher from 'expo-intent-launcher';
+import { ActivityIndicator, Alert, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import Constants from 'expo-constants';
 import { useRouter } from 'expo-router';
-import { compareVersions, fetchLatestRelease, LATEST_APK_URL, type ReleaseInfo } from '../src/lib/releases';
+import { compareVersions, fetchLatestRelease, type ReleaseInfo } from '../src/lib/releases';
+import { CAN_IN_APP_INSTALL, downloadAndInstall, openExternal } from '../src/lib/installer';
 import BrandName from '../src/components/BrandName';
+import PressFX from '../src/components/PressFX';
 import { SPACING, useTheme, type Palette } from '../src/theme';
 
 const APP_VERSION = Constants.expoConfig?.version ?? '0.0.0';
 
-/** 本应用包名，用于跳转「安装未知应用」授权设置页 */
-const ANDROID_PACKAGE = 'com.irikana.slywritelite';
-
-/** 安装包附件名（与发布产物一致） */
+/** 安装包附件名（与发布产物一致，仅 Android 分支使用） */
 const APK_ASSET = 'app-release.apk';
 
 function formatDate(iso: string): string {
@@ -27,39 +26,6 @@ function formatDate(iso: string): string {
     return `${d.getFullYear()}年${d.getMonth() + 1}月${d.getDate()}日`;
   } catch {
     return iso;
-  }
-}
-
-/** 唤起系统安装界面；未获授权时给出可操作的兜底入口 */
-async function launchInstaller(contentUri: string): Promise<boolean> {
-  try {
-    await IntentLauncher.startActivityAsync('android.intent.action.VIEW', {
-      data: contentUri,
-      type: 'application/vnd.android.package-archive',
-      flags: 1, // FLAG_GRANT_READ_URI_PERMISSION
-    });
-    return true;
-  } catch {
-    Alert.alert('需要安装权限', '系统尚未允许本应用安装应用。请开启「安装未知应用」权限后重试。', [
-      { text: '取消', style: 'cancel' },
-      {
-        text: '去开启',
-        onPress: () => {
-          IntentLauncher.startActivityAsync('android.settings.MANAGE_UNKNOWN_APP_SOURCES', {
-            data: `package:${ANDROID_PACKAGE}`,
-          }).catch(() => {
-            Linking.openURL(LATEST_APK_URL).catch(() => {});
-          });
-        },
-      },
-      {
-        text: '浏览器下载',
-        onPress: () => {
-          Linking.openURL(LATEST_APK_URL).catch(() => {});
-        },
-      },
-    ]);
-    return false;
   }
 }
 
@@ -91,68 +57,27 @@ export default function UpdatesScreen() {
     check();
   }, [check]);
 
-  /** 应用内下载安装包，完成后唤起安装；同版本文件已存在则直接进安装步骤 */
-  const downloadAndInstall = useCallback(async () => {
+  /** Android：应用内下载安装包，完成后唤起安装；桌面：打开系统浏览器进入发布页 */
+  const handleUpdate = useCallback(async () => {
+    if (!release) return;
+    if (!CAN_IN_APP_INSTALL) {
+      openExternal(release.htmlUrl).catch(() => {
+        Alert.alert('无法打开发布页', '请手动访问发布页面下载桌面版更新包。');
+      });
+      return;
+    }
     try {
       setDownloading(true);
       setProgress(0);
-
-      const assetUrl = release?.assets?.find((a) => a.name === APK_ASSET)?.browser_download_url;
-      const officialUrl = assetUrl || LATEST_APK_URL;
-      // 国内网络下走加速镜像，失败回退官方地址
-      const mirrorUrl = officialUrl.startsWith('https://github.com/') ? `https://gh-proxy.com/${officialUrl}` : null;
-      const tag = release?.tagName?.replace(/^v/, '') || 'latest';
-      const fileUri = `${FileSystem.cacheDirectory}${APK_ASSET.replace('.apk', '')}-${tag}.apk`;
-
-      const existing = await FileSystem.getInfoAsync(fileUri);
-      if (existing.exists && existing.size > 1024 * 1024) {
-        await launchInstaller(await FileSystem.getContentUriAsync(fileUri));
-        return;
-      }
-
-      // 清掉其他版本留下的安装包
-      const dirUri = FileSystem.cacheDirectory ?? '';
-      try {
-        const cached = await FileSystem.readDirectoryAsync(dirUri);
-        for (const f of cached) {
-          if (f.startsWith('app-release-') && f.endsWith('.apk') && f !== `app-release-${tag}.apk`) {
-            await FileSystem.deleteAsync(`${dirUri}${f}`).catch(() => {});
-          }
-        }
-      } catch {
-        // 目录读取失败不影响下载
-      }
-
-      const downloadFrom = async (url: string) => {
-        const task = FileSystem.createDownloadResumable(
-          url,
-          fileUri,
-          {},
-          (p) => {
-            const expected = p.totalBytesExpectedToWrite;
-            const written = p.totalBytesWritten;
-            if (expected > 0) setProgress(Math.round((written / expected) * 100));
-            else if (written > 0) setProgress(101);
-          },
-        );
-        return task.downloadAsync();
-      };
-
-      let result: Awaited<ReturnType<typeof downloadFrom>>;
-      if (mirrorUrl) {
-        try {
-          result = await downloadFrom(mirrorUrl);
-        } catch {
-          result = undefined;
-        }
-      }
-      if (!result?.uri) result = await downloadFrom(officialUrl);
-      if (!result?.uri) throw new Error('下载失败');
-
-      await launchInstaller(await FileSystem.getContentUriAsync(result.uri));
+      await downloadAndInstall({
+        htmlUrl: release.htmlUrl,
+        assetUrl: release.assets.find((a) => a.name === APK_ASSET)?.browser_download_url,
+        tag: release.tagName.replace(/^v/, '') || 'latest',
+        onProgress: setProgress,
+      });
     } catch {
       Alert.alert('自动安装未成功', '将打开浏览器下载，下载完成后请点开通知手动安装。');
-      Linking.openURL(LATEST_APK_URL).catch(() => {
+      openExternal(release.htmlUrl).catch(() => {
         Alert.alert('无法下载', '请稍后再试，或换用网络环境更好的设备下载。');
       });
     } finally {
@@ -211,19 +136,27 @@ export default function UpdatesScreen() {
               </Text>
             </>
           )}
-          <Pressable style={[s.primaryBtn, downloading && s.btnDisabled]} onPress={downloadAndInstall} disabled={downloading}>
-            <Text style={s.primaryBtnText}>
-              {downloading ? progressText : `下载并安装（${release.tagName}）`}
-            </Text>
-          </Pressable>
-          {downloading ? (
-            <View style={s.progressWrap}>
-              <View style={s.progressTrack}>
-                <View style={[s.progressFill, progress === 101 && s.progressIndeterminate]} />
-              </View>
-              <Text style={s.progressText}>{progress === 101 ? '…' : `${progress}%`}</Text>
-            </View>
-          ) : null}
+          {CAN_IN_APP_INSTALL ? (
+            <>
+              <PressFX style={[s.primaryBtn, downloading && s.btnDisabled]} onPress={handleUpdate} disabled={downloading}>
+                <Text style={s.primaryBtnText}>
+                  {downloading ? progressText : `下载并安装（${release.tagName}）`}
+                </Text>
+              </PressFX>
+              {downloading ? (
+                <View style={s.progressWrap}>
+                  <View style={s.progressTrack}>
+                    <View style={[s.progressFill, progress === 101 && s.progressIndeterminate]} />
+                  </View>
+                  <Text style={s.progressText}>{progress === 101 ? '…' : `${progress}%`}</Text>
+                </View>
+              ) : null}
+            </>
+          ) : (
+            <PressFX style={s.primaryBtn} onPress={handleUpdate}>
+              <Text style={s.primaryBtnText}>前往发布页下载桌面版</Text>
+            </PressFX>
+          )}
         </View>
       ) : (
         <View style={[s.box, s.centerBox]}>

@@ -7,6 +7,10 @@
     "android": "expo run:android",
     "ios": "expo run:ios",
     "web": "expo start --web",
+    "build:web": "expo export --platform web --output-dir dist-web && node scripts/strip-hydration.js dist-web",
+    "desktop": "npm run build:web && electron desktop",
+    "build:desktop": "npm run build:web && electron-builder --win portable",
+    "verify:desktop": "npm run build:web && electron scripts/verify-desktop.js",
     "typecheck": "tsc --noEmit",
     "postinstall": "node scripts/patch-android.js"
   },
@@ -26,6 +30,7 @@
     "expo-status-bar": "~2.0.1",
     "marked": "^15.0.6",
     "react": "18.3.1",
+    "react-dom": "18.3.1",
     "react-native": "0.76.9",
     "react-native-safe-area-context": "4.12.0",
     "react-native-screens": "~4.4.0",
@@ -36,6 +41,8 @@
   "devDependencies": {
     "@babel/core": "^7.25.2",
     "@types/react": "~18.3.12",
+    "electron": "^44.3.0",
+    "electron-builder": "^26.15.3",
     "typescript": "^5.3.3"
   },
   "private": true

@@ -1,8 +1,9 @@
 // 笔记本首页：品牌行 + 搜索 + 标签过滤 + 排序 + 笔记卡片列表 + 新建入口 + 底部次级入口。
 // 列表数据来自 notes-store（只存元数据），展示派生结果 filterNotes。
-import React, { useCallback, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   ActivityIndicator,
+  Animated,
   FlatList,
   Pressable,
   ScrollView,
@@ -14,9 +15,13 @@ import {
 import { router } from 'expo-router';
 import { SPACING, useTheme, type Palette } from '../src/theme';
 import BrandName from '../src/components/BrandName';
+import PressFX from '../src/components/PressFX';
 import { STATUS_LABELS, type NoteMeta } from '../src/lib/frontmatter';
 import { createNote } from '../src/lib/notes-vault';
 import { filterNotes, useNotesStore } from '../src/store/notes-store';
+
+/** 入场动画参与的最大条目数（再多就没有逐条出现的节奏感了） */
+const ENTER_MAX = 8;
 
 const SORT_LABELS: Record<'updated' | 'created' | 'title', string> = {
   updated: '更新',
@@ -28,6 +33,44 @@ function statusColors(colors: Palette, status: keyof typeof STATUS_LABELS) {
   if (status === 'active') return { bg: colors.successBg, fg: colors.success, border: colors.success };
   if (status === 'archived') return { bg: colors.bgMuted, fg: colors.textLight, border: colors.border };
   return { bg: colors.infoBg, fg: colors.accent, border: colors.border };
+}
+
+/**
+ * 列表条目入场动画：首次就绪时 fade in + 自下 12px 滑入，逐条延迟 40ms。
+ * 只在数据从「未就绪」变为「就绪」的那一次播放；滚动复用与后续刷新不再触发，
+ * 避免「每屏都在动」的廉价感。
+ */
+function EnterRow({ index, active, children }: { index: number; active: boolean; children: React.ReactNode }) {
+  const anim = React.useRef(new Animated.Value(0)).current;
+  const played = React.useRef(false);
+
+  useEffect(() => {
+    if (!active || played.current) return;
+    played.current = true;
+    if (index >= ENTER_MAX) {
+      anim.setValue(1);
+      return;
+    }
+    Animated.sequence([
+      Animated.delay(index * 40),
+      Animated.timing(anim, {
+        toValue: 1,
+        duration: 220,
+        useNativeDriver: true,
+      }),
+    ]).start();
+  }, [active, index, anim]);
+
+  return (
+    <Animated.View
+      style={{
+        opacity: anim,
+        transform: [{ translateY: anim.interpolate({ inputRange: [0, 1], outputRange: [12, 0] }) }],
+      }}
+    >
+      {children}
+    </Animated.View>
+  );
 }
 
 export default function NotebookPage() {
@@ -68,44 +111,46 @@ export default function NotebookPage() {
     }
   }, [creating, upsertMeta]);
 
-  const renderCard = ({ item }: { item: NoteMeta }) => {
+  const renderCard = ({ item, index }: { item: NoteMeta; index: number }) => {
     const sc = statusColors(colors, item.status);
     return (
-      <Pressable
-        style={s.card}
-        onPress={() => router.push({ pathname: '/note', params: { file: item.file } })}
-      >
-        <View style={s.cardHead}>
-          <Text style={s.cardTitle} numberOfLines={1}>
-            {item.title}
-          </Text>
-          {item.pinned ? <Text style={s.pinMark}>置顶</Text> : null}
-        </View>
-        <Text style={s.cardMeta}>
-          {item.updated}
-          {'  ·  '}
-          {item.words} 字
-        </Text>
-        {item.excerpt ? (
-          <Text style={s.cardExcerpt} numberOfLines={2}>
-            {item.excerpt}
-          </Text>
-        ) : (
-          <Text style={s.cardExcerptEmpty}>（暂无内容）</Text>
-        )}
-        <View style={s.cardFoot}>
-          <View style={s.cardTags}>
-            {item.tags.slice(0, 4).map((t) => (
-              <Text key={t} style={s.cardTag}>
-                {t}
-              </Text>
-            ))}
+      <EnterRow index={index} active={ready && !loading}>
+        <Pressable
+          style={s.card}
+          onPress={() => router.push({ pathname: '/note', params: { file: item.file } })}
+        >
+          <View style={s.cardHead}>
+            <Text style={s.cardTitle} numberOfLines={1}>
+              {item.title}
+            </Text>
+            {item.pinned ? <Text style={s.pinMark}>置顶</Text> : null}
           </View>
-          <Text style={[s.statusBadge, { backgroundColor: sc.bg, color: sc.fg, borderColor: sc.border }]}>
-            {STATUS_LABELS[item.status]}
+          <Text style={s.cardMeta}>
+            {item.updated}
+            {'  ·  '}
+            {item.words} 字
           </Text>
-        </View>
-      </Pressable>
+          {item.excerpt ? (
+            <Text style={s.cardExcerpt} numberOfLines={2}>
+              {item.excerpt}
+            </Text>
+          ) : (
+            <Text style={s.cardExcerptEmpty}>（暂无内容）</Text>
+          )}
+          <View style={s.cardFoot}>
+            <View style={s.cardTags}>
+              {item.tags.slice(0, 4).map((t) => (
+                <Text key={t} style={s.cardTag}>
+                  {t}
+                </Text>
+              ))}
+            </View>
+            <Text style={[s.statusBadge, { backgroundColor: sc.bg, color: sc.fg, borderColor: sc.border }]}>
+              {STATUS_LABELS[item.status]}
+            </Text>
+          </View>
+        </Pressable>
+      </EnterRow>
     );
   };
 
@@ -207,13 +252,13 @@ export default function NotebookPage() {
       />
 
       {/* 新建按钮 */}
-      <Pressable style={s.fab} onPress={handleNew} disabled={creating}>
+      <PressFX style={s.fab} onPress={handleNew} disabled={creating}>
         {creating ? (
           <ActivityIndicator color="#fff" />
         ) : (
           <Text style={s.fabText}>新建笔记</Text>
         )}
-      </Pressable>
+      </PressFX>
     </View>
   );
 }
