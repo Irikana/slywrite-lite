@@ -45,5 +45,7 @@
     "electron-builder": "^26.15.3",
     "typescript": "^5.3.3"
   },
-  "private": true
+  "private": true,
+  "author": "Irikana",
+  "description": "SlyWrite Lite - local Markdown notebook (Android / PC)"
 }

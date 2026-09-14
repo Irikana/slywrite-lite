@@ -18,6 +18,12 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      # Windows runner 默认未开长路径支持：electron-builder 扫 node_modules 即秒退（error before start）。
+      - name: Enable Win32 long paths
+        run: |
+          Set-ItemProperty -Path 'HKLM:\SYSTEM\CurrentControlSet\Control\FileSystem' -Name 'LongPathsEnabled' -Value 1 -Type DWord
+          "LongPathsEnabled now: $((Get-ItemProperty -Path 'HKLM:\SYSTEM\CurrentControlSet\Control\FileSystem' -Name 'LongPathsEnabled').LongPathsEnabled)"
+
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
@@ -35,9 +41,33 @@ jobs:
         run: npm run build:web
 
       - name: Build portable EXE (electron-builder)
-        run: npx electron-builder --win portable
+        # CSC_IDENTITY_AUTO_DISCOVERY=false：无证书环境跳过签名尝试（否则 builder 会去找
+        # winCodeSign / 证书，报错信息还可能被签名失败掩盖真实问题）
         env:
-          ELECTRON-builder_parallel: 'false'
+          CSC_IDENTITY_AUTO_DISCOVERY: 'false'
+        run: npx electron-builder --win portable --x64 --publish never *>&1 | Tee-Object -FilePath eb.log; exit $LASTEXITCODE
+
+      # 失败诊断：actions 日志匿名拉不到（403），error annotation 是公开可读的——
+      # 把 electron-builder 输出尾部（含真实报错）写进 annotation，跑失败时无需登录即可取。
+      - name: Surface build log on failure
+        if: failure()
+        shell: pwsh
+        run: |
+          if (Test-Path eb.log) {
+            $tail = (Get-Content eb.log -Tail 60) -join '%0A'
+            $tail = $tail -replace "`r", ''
+            Write-Output ('::error::electron-builder tail -> ' + $tail)
+          } else {
+            Write-Output '::error::electron-builder produced no log file'
+          }
+
+      - name: Upload build log on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: pc-build-log-${{ github.run_number }}
+          path: eb.log
+          retention-days: 7
 
       - name: Read version
         id: version
