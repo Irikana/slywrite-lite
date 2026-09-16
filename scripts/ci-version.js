@@ -1,16 +1,21 @@
-// CI 版本号注入：把 package.json 的三位正式版本（A.B.C）扩成 A.B.C.<构建号>，
+// CI 版本号注入：把 package.json 的三位正式版本（A.B.C）扩成 A.B.C-<构建号>，
 // 写入 package.json / app.json（仅工作区，不提交），供构建产物与「关于」页读取。
 // 规则出处见 AGENTS.md「版本号规则（全软件统一）」：第四位是测试构建号，
 // 每次 CI 构建自动 +1（以 GitHub run_number 为源），正式发布只递增第三位。
-// 用法：node scripts/ci-version.js <build-number>
-// 输出：GITHUB_OUTPUT 中 base=A.B.C、full=A.B.C.N（若在该环境）。
+// 用法：node scripts/ci-version.js <build-number> [--official]
+//   --official（tag 正式构建）：版本字符串保持 A.B.C 不追加构建号，但同样用构建号填
+//   versionCode——versionCode 必须跨「测试通道 / 正式通道」单调递增，否则装测试包的设备
+//   会被正式包挡下（Android 不允许安装 versionCode 更低的包）。
+// 输出：GITHUB_OUTPUT 中 base=A.B.C、full=<写入产物的版本>（若在该环境）。
 'use strict';
 const fs = require('fs');
 const path = require('path');
 
-const buildNo = process.argv[2];
-if (!buildNo || !/^\d+$/.test(buildNo)) {
-  console.error('[ci-version] 用法：node scripts/ci-version.js <构建号（纯数字）>');
+const args = process.argv.slice(2);
+const official = args.includes('--official');
+const buildNo = args.find((a) => /^\d+$/.test(a));
+if (!buildNo) {
+  console.error('[ci-version] 用法：node scripts/ci-version.js <构建号（纯数字）> [--official]');
   process.exit(1);
 }
 
@@ -26,7 +31,7 @@ const base = pkg.version.split('.').slice(0, 3).join('.');
 // 直接报 Invalid version 使 PC 打包秒败（2026-09-14 CI run 34805680213 实证）。
 // Android APK 不受此限制（expo 只把 version 字符串写进应用标签），但为全软件统一，
 // 注入脚本一律产出 A.B.C-N 形式；展示时可按 '-' 拆分还原四段语义。
-const full = `${base}-${buildNo}`;
+const full = official ? base : `${base}-${buildNo}`;
 
 pkg.version = full;
 fs.writeFileSync(pkgPath, JSON.stringify(pkg, null, 2) + '\n');

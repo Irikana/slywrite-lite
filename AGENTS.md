@@ -24,9 +24,10 @@
 - 格式 `A.B.C.X`：`A.B.C` 正式版本 + `X` 测试构建号。规则全文见根 `AGENTS.md`，Lite 的具体落点：
 - **仓库内版本字段只维护三位正式版本**：`package.json.version` 与 `app.json.expo.version` = `0.0.1`。
   日常改动不动版本号、不打 tag、不建 Release；push 与手动触发产生的都是**测试构建**。
-- **第四位 X 由 CI 注入，不提交**：`scripts/ci-version.js <run_number>` 在构建开始时把
+- **第四位 X 由 CI 注入，不提交**：`scripts/ci-version.js <run_number> [--official]` 在构建开始时把
   `A.B.C-<run_number>`（semver 前发布写法，**不是** `A.B.C.X`，electron-builder 拒收四段点分号）
-  写进 package.json / app.json（versionCode 也用构建号填充），
+  写进 package.json / app.json（versionCode 也用构建号填充）。tag 正式构建带 `--official`：版本字符串保持
+  三段，但 versionCode 仍用构建号填——Android 不接受更低的 versionCode，否则装过测试包的设备装不上正式包。
   产物命名 `slywrite-lite-v{A.B.C-N}-release` / `slywrite-lite-{A.B.C-N}-pc`，
   所以 artifact 与「关于」页显示的永远是「正式版本-构建号」，而仓库里永远是三段。
   本地 `npm run desktop` / `build:desktop` 不注入，显示三段。
