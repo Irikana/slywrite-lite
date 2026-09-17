@@ -1,6 +1,6 @@
 {
   "name": "slywrite-lite",
-  "version": "0.0.1",
+  "version": "0.0.2",
   "main": "expo-router/entry",
   "scripts": {
     "start": "expo start",

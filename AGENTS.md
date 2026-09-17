@@ -23,7 +23,7 @@
 
 - 格式 `A.B.C.X`：`A.B.C` 正式版本 + `X` 测试构建号。规则全文见根 `AGENTS.md`，Lite 的具体落点：
 - **仓库内版本字段只维护三位正式版本**：`package.json.version` 与 `app.json.expo.version` = `0.0.1`。
-  日常改动不动版本号、不打 tag、不建 Release；push 与手动触发产生的都是**测试构建**。
+  日常改动不动版本号；push 与手动触发产生测试构建（产物只留 workflow artifact）；作者要求时可对最新构建成功的产物补打 tag（走下文正式发布流程的 tag 步骤）。
 - **第四位 X 由 CI 注入，不提交**：`scripts/ci-version.js <run_number> [--official]` 在构建开始时把
   `A.B.C-<run_number>`（semver 前发布写法，**不是** `A.B.C.X`，electron-builder 拒收四段点分号）
   写进 package.json / app.json（versionCode 也用构建号填充）。tag 正式构建带 `--official`：版本字符串保持
@@ -94,7 +94,7 @@
 - 命令：`npm run build:desktop`（= `build:web` 静态导出 + strip + `electron-builder --win portable`）；
   开发直跑：`npm run desktop`。产物在 `desktop-build/`（已 gitignore），版本号从 `package.json` 推导
   （`slywrite-lite-{version}-win-x64.exe`），与 APK 共用同一发布 tag，不单独动版本号。
-- CI：`.github/workflows/build-pc.yml`，与 build-apk.yml 完全独立；Release 存在时才把 exe 追加为附件，不建 tag。
+- CI：`.github/workflows/build-pc.yml`，与 build-apk.yml 完全独立；Release 存在时才把 exe 追加为附件。
 - **hydration 坑（必须保留 strip-hydration.js）**：SDK 52 的 `web.output: "static"` 强制预渲染整棵树并注入
   `__EXPO_ROUTER_HYDRATE__`，本应用首屏依赖异步存储，SSR 与客户端首帧必然不一致，React 18 hydration 直接抛
   #418/#425。导出后必须跑 `node scripts/strip-hydration.js dist-web` 把预渲染剥掉（`build:web` 已串联）。
