@@ -34,7 +34,9 @@
 - **正式发布**（**每批用户可见改动默认走完，不必等作者说「正式发布 / 添加 tag」**，2026-09-19 起作者指令）：
   1. 第三位 +1（如 `0.0.2` → `0.0.3`），同步 package.json 与 app.json 两处；
   2. 写 `changelog/CHANGELOG-{新版本}.md`（概述自上一正式版以来累积的变更）；
-  3. 提交后**紧接着**打 tag `v{A.B.C}`——作者用 GitHub Desktop 点 Push 时会连带上传本地 tag，个别版本没带上时补 `git push origin v{A.B.C}`；
+  3. 提交后**紧接着**打 tag `v{A.B.C}`，并**显式推送 tag**：`git push origin v{A.B.C}`。
+     作者用 GitHub Desktop 点 Push 只推分支、**不会带上 tag**（2026-09-19 实证），所以 tag 这一步由开发者 / AI 收尾；
+     tag 没推到远端就等于没发完——流水线只认远端 tag；
   4. tag 触发 build-apk.yml / build-pc.yml 的正式分支：产物为三段版本，创建 Release 并挂 APK + PC exe。
 - 历史：`0.0.1`（2026-09 发布，Android 单端）属旧规则时期产物，保持原样不回改；
   PC 版自本次起与 APK 共用同一版本线与同一 Release。
