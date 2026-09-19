@@ -1,10 +1,14 @@
 // 预览渲染管线：Markdown → HTML 文档（供 HtmlPreview 的 WebView 展示）。
-// 流程：双链先换成站内 <a>，marked 渲染，再后处理高亮 / 任务方框 / MathJax。
+// 流程：先抽出数学公式（代码区不抽，交给 marked 正常渲染），双链换成站内 <a>，marked 渲染，
+// 再后处理高亮 / 任务方框，最后把公式放回。
+// 公式必须赶在 marked 之前抽走：markdown 会把 _ 当斜体、把换行当 <br>（breaks:true），
+// 编辑器「独立公式」按钮插的正是 $$\n公式\n$$，不抽走就到不了 MathJax 手里。
 // 排版样式：优先用在线排版样式（AsyncStorage 缓存 24 小时），失败回退内置 FALLBACK_CSS。
 // 本模块只读、静默降级，不报错阻塞；应用内另一处外部请求是更新检查（src/lib/releases.ts），同样只读。
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { marked } from 'marked';
 import type { NoteMeta } from './frontmatter';
+import { maskMath } from './math-guard';
 import { resolveWikiLinks } from './links';
 import { FALLBACK_CSS } from './fallback-style';
 
@@ -136,15 +140,16 @@ export async function renderMarkdownToHtml(
   all: NoteMeta[],
   opts: RenderOptions,
 ): Promise<string> {
-  const withLinks = resolveWikiLinks(body, all);
+  const math = maskMath(body);
+  const withLinks = resolveWikiLinks(math.masked, all);
   const raw = marked.parse(withLinks, { gfm: true, breaks: true, async: false }) as string;
-  const content = postProcessContent(raw);
+  const content = math.restore(postProcessContent(raw));
   const siteCss = (opts.useSiteCss ?? true) ? await loadSiteCss() : null;
   const styleBlock = siteCss
     ? `<style>\n${FALLBACK_CSS}\n</style>\n<style>\n${siteCss}\n</style>`
     : `<style>\n${FALLBACK_CSS}\n</style>`;
   const bodyClass = opts.isDark ? 'force-dark-mode' : 'force-light-mode';
-  const math = body.includes('$') ? `\n${mathjaxHead()}` : '';
+  const mathjax = math.found ? `\n${mathjaxHead()}` : '';
 
   return [
     '<!DOCTYPE html>',
@@ -156,7 +161,7 @@ export async function renderMarkdownToHtml(
     '</head>',
     `<body class="${bodyClass}">`,
     `<article class="content-main sl-measure">\n${content}\n</article>`,
-    math,
+    mathjax,
     '</body>',
     '</html>',
   ].join('\n');

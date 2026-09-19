@@ -126,4 +126,7 @@ body.force-dark-mode hr { border-top-color: #3a4048; }
 img { max-width: 100%; height: auto; }
 mjx-container { overflow-x: auto; overflow-y: hidden; }
 mjx-container[display="true"] { margin: 1em 0; }
+/* 独立公式：MathJax 接手前是居中的 LaTeX 原文（离线时也读得懂）；
+   text-indent 归零——站点 CSS 的正文首行缩进会把居中的公式推歪 */
+.sl-math-block { display: block; text-align: center; margin: 1em 0; text-indent: 0; }
 `;
