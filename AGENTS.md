@@ -22,8 +22,8 @@
 ## 版本号规则（全软件统一规则的 Lite 落点）
 
 - 格式 `A.B.C.X`：`A.B.C` 正式版本 + `X` 测试构建号。规则全文见根 `AGENTS.md`，Lite 的具体落点：
-- **仓库内版本字段只维护三位正式版本**：`package.json.version` 与 `app.json.expo.version` = `0.0.1`。
-  日常改动不动版本号；push 与手动触发产生测试构建（产物只留 workflow artifact）；作者要求时可对最新构建成功的产物补打 tag（走下文正式发布流程的 tag 步骤）。
+- **仓库内版本字段只维护三位正式版本**：`package.json.version` 与 `app.json.expo.version`（当前值以 `package.json` 为准，别在本文件里抄写具体号，避免文档滞后）。
+  一批用户可见改动即一次发版（见下文「正式发布」），发完就有新 tag；纯文档 / 注释类整理只提交，不打 tag，也不动版本号。
 - **第四位 X 由 CI 注入，不提交**：`scripts/ci-version.js <run_number> [--official]` 在构建开始时把
   `A.B.C-<run_number>`（semver 前发布写法，**不是** `A.B.C.X`，electron-builder 拒收四段点分号）
   写进 package.json / app.json（versionCode 也用构建号填充）。tag 正式构建带 `--official`：版本字符串保持
@@ -31,10 +31,10 @@
   产物命名 `slywrite-lite-v{A.B.C-N}-release` / `slywrite-lite-{A.B.C-N}-pc`，
   所以 artifact 与「关于」页显示的永远是「正式版本-构建号」，而仓库里永远是三段。
   本地 `npm run desktop` / `build:desktop` 不注入，显示三段。
-- **正式发布**（作者明确说「正式发布 / 添加 tag」才做）：
-  1. 第三位 +1（如 `0.0.1` → `0.0.2`），同步 package.json 与 app.json 两处；
+- **正式发布**（**每批用户可见改动默认走完，不必等作者说「正式发布 / 添加 tag」**，2026-09-19 起作者指令）：
+  1. 第三位 +1（如 `0.0.2` → `0.0.3`），同步 package.json 与 app.json 两处；
   2. 写 `changelog/CHANGELOG-{新版本}.md`（概述自上一正式版以来累积的变更）；
-  3. commit + push 后打 tag `v{A.B.C}` 并推送（GitHub Desktop 或 `git push origin v...`）；
+  3. 提交后**紧接着**打 tag `v{A.B.C}`——作者用 GitHub Desktop 点 Push 时会连带上传本地 tag，个别版本没带上时补 `git push origin v{A.B.C}`；
   4. tag 触发 build-apk.yml / build-pc.yml 的正式分支：产物为三段版本，创建 Release 并挂 APK + PC exe。
 - 历史：`0.0.1`（2026-09 发布，Android 单端）属旧规则时期产物，保持原样不回改；
   PC 版自本次起与 APK 共用同一版本线与同一 Release。
