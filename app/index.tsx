@@ -247,6 +247,9 @@ export default function NotebookPage() {
             <Pressable style={s.footerBtn} onPress={() => router.push('/updates')}>
               <Text style={s.footerBtnText}>检查更新</Text>
             </Pressable>
+            <Pressable style={s.footerBtn} onPress={() => router.push('/changelog')}>
+              <Text style={s.footerBtnText}>更新日志</Text>
+            </Pressable>
           </View>
         }
       />
@@ -380,7 +383,7 @@ const createStyles = (COLORS: Palette) =>
     empty: { paddingTop: SPACING.xl * 2, paddingHorizontal: SPACING.lg, alignItems: 'center' },
     emptyTitle: { fontSize: 15, fontWeight: '600', color: COLORS.textSecondary, marginBottom: SPACING.sm },
     emptyText: { fontSize: 13, color: COLORS.textLight, lineHeight: 20, textAlign: 'center' },
-    footer: { flexDirection: 'row', justifyContent: 'center', gap: SPACING.md, paddingVertical: SPACING.lg },
+    footer: { flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'center', gap: SPACING.md, rowGap: SPACING.sm, paddingVertical: SPACING.lg },
     footerBtn: {
       borderWidth: 1,
       borderColor: COLORS.border,

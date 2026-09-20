@@ -34,6 +34,8 @@
 - **正式发布**（**每批用户可见改动默认走完，不必等作者说「正式发布 / 添加 tag」**，2026-09-19 起作者指令）：
   1. 第三位 +1（如 `0.0.2` → `0.0.3`），同步 package.json 与 app.json 两处；
   2. 写 `changelog/CHANGELOG-{新版本}.md`（概述自上一正式版以来累积的变更）；
+  2b. **跑 `node scripts/gen-changelog.js` 重新生成 `src/lib/changelog-data.ts`**——App 内「更新日志」页读的是这份内置数据，
+     漏跑一步，发出去的版本里就看不到本次变更（这一步随每次发版执行，改动 changelog 文本后也要重跑）；
   3. 提交后**紧接着**打 tag `v{A.B.C}`，并**显式推送 tag**：`git push origin v{A.B.C}`。
      作者用 GitHub Desktop 点 Push 只推分支、**不会带上 tag**（2026-09-19 实证），所以 tag 这一步由开发者 / AI 收尾；
      tag 没推到远端就等于没发完——流水线只认远端 tag；
@@ -61,7 +63,7 @@
 
 ## 目录约定
 
-- `app/` — expo-router 路由页（业务代码）；`app/updates.tsx` 是「更新与版本」页（匿名读发布信息 + 应用内下载安装；桌面版按钮改为打开发布页下载）。
+- `app/` — expo-router 路由页（业务代码）；`app/updates.tsx` 是「更新与版本」页（匿名读发布信息 + 应用内下载安装；桌面版按钮改为打开发布页下载）；`app/changelog.tsx` 是「更新日志」页（离线内置，数据来自 `src/lib/changelog-data.ts`，入口在首页底部与设置页「关于」段）。
 - `src/lib/` — 存储与解析：`.md` 读写、front-matter、导入导出、在线样式拉取与回退、更新检查（`releases.ts`，无凭据）。
   - 平台分文件（Metro 按 `.web` 后缀自动选择，两端签名必须保持一致）：
     `vault-fs.ts(.web)` 底层文件接口、`file-export.ts(.web)` 文件交付（分享面板 / 另存为）、`installer.ts(.web)` 更新包安装。
@@ -72,7 +74,11 @@
 - `src/assets/` — `app.json` 引用的图标等静态资源（缺图会导致 `expo prebuild` 失败）。
 - `desktop/` — Electron 壳（`main.js` 主进程：slite 协议服务静态产物 + vault 文件 IPC + 另存为对话框；`preload.js` 仅经 contextBridge 暴露这两类能力）。
 - `scripts/strip-hydration.js` — 桌面/ Web 导出后处理：剥离预渲染内容与 hydrate 标记（原因见「构建注意」）。
-- `changelog/` — 每版本一份 CHANGELOG。
+- `changelog/` — 每版本一份 `CHANGELOG-{A.B.C}.md`。书写约定决定 App 内「更新日志」页看到什么：
+  文件头 `# CHANGELOG x.y.z` 之后那段普通文字是该版本摘要；`## 新增 / 改进 / 修复` 为面向读者的节，
+  其中每条 `- ` 逐项进入 App（缩进续行并入上一条）；标题含「构建 / 发布 / CI / 硬约束 / 规则 / 依赖 / 验证」的节
+  视为开发者节，整节不进界面。**读者节的措辞同样受「界面文案保持独立」约束**：不出现其他产品名、
+  凭据与对照性说明（这些内容写在开发者节里即可）。改完 changelog 记得重跑 `scripts/gen-changelog.js`。
 
 ## 构建注意
 

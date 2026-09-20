@@ -11,13 +11,13 @@
   构建链：`npm run build:desktop`（导出 + strip + electron-builder portable exe）；`npm run verify:desktop` 冒烟。
 - **应用内「更新与版本」页**（`app/updates.tsx` + `src/lib/releases.ts`）：匿名 GET 公开 Release 元数据检查更新，
   Android 端下载附件 APK 交系统安装界面完成安装；桌面端按钮改为打开发布页下载。全程无凭据、无远端写入。
-- **品牌标识**（`src/components/BrandName.tsx`）：「SlyWrite + 边框底色 Lite 徽标」统一渲染，徽标固定银灰、不随主题强调色。
+- **品牌标识**（`src/components/BrandName.tsx`）：「主名 + 边框底色 Lite 徽标」统一渲染，徽标固定银灰、不随主题强调色。
 - **按压与入场动效**（`src/components/PressFX.tsx`）与 `slide_from_right` 页面转场。
 - **预览 iframe 组件**（`src/components/HtmlPreview.web.tsx`）：桌面/Web 端以 sandbox 隔离渲染，双链经 postMessage 回传。
 
 ## 改进
 
-- **界面文案独立化**：界面不再出现 SlyWrite、牧羊人图书馆、GitHub、Token、账号等对照性说明，只讲本机存储、备份、预览与更新。
+- **界面文案独立化**：界面措辞改为只讲本机存储、备份、排版预览与更新与版本，不再出现与其他产品对照的说明。
 - **版本规则切换**：仓库字段只维护三段正式版本 `A.B.C`；第四位构建号由 CI 注入（`scripts/ci-version.js`，
   写成 semver 前发布 `A.B.C-<run_number>`），产物命名 `slywrite-lite-v{A.B.C-N}-release` / `-pc`，仓库里不再出现四段号。
 - 预览加载根路径，消除 not-found 页闪现。

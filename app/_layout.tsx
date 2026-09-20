@@ -37,6 +37,7 @@ export default function RootLayout() {
         <Stack.Screen name="note" options={{ title: '笔记' }} />
         <Stack.Screen name="recycle" options={{ title: '回收站' }} />
         <Stack.Screen name="settings" options={{ title: '设置' }} />
+        <Stack.Screen name="changelog" options={{ title: '更新日志' }} />
       </Stack>
     </View>
   );

@@ -1,7 +1,7 @@
 # CHANGELOG 0.0.1
 
-SlyWrite Lite 首个功能版本：完全本地、零账号、零 Token 的 Markdown 笔记本。
-笔记为应用私有目录下的真实 .md 文件（YAML front-matter），可与 Obsidian / Joplin 互通；不联网写仓库、不发布、不自更新。
+首个功能版本：只在设备上运行的 Markdown 笔记本。
+笔记为应用私有目录下的真实 .md 文件（YAML front-matter），可与 Obsidian / Joplin 互通；数据不出本机。
 
 > 版本线自 **0.0.1** 起，与 SlyWrite 同规则：每次工作只自增第四位数，`app.json` 的 `android.versionCode` 每次发布 +1。
 > 此前的 `0.1.0` 从未发布成功（首个 CI 构建即失败、仓库无 tag），故重起版本线。
@@ -18,7 +18,7 @@ SlyWrite Lite 首个功能版本：完全本地、零账号、零 Token 的 Mark
 - 双链（`src/lib/links.ts`）：`[[标题]]` 提取去重、反向链接查找、渲染前替换为 `slywrite-lite://note/<标题>` 站内链接，
   指向不存在笔记的加 `sl-wiki-missing` 样式。
 - 预览渲染（`src/lib/preview.ts` + `src/lib/fallback-style.ts`）：marked 渲染后处理 `==高亮==`、任务方框（纯文字 `[ ]` / `[x]`，不用字体图标）、
-  含公式时注入 MathJax 3（与牧羊人图书馆站点规范一致）；可选拉取公开站点 CSS（AsyncStorage 缓存 24 小时，键 `slywrite-lite-site-css`），
+  含公式时注入 MathJax 3；可选拉取公开站点 CSS（AsyncStorage 缓存 24 小时，键 `slywrite-lite-site-css`），
   失败或超时静默回退内置中文阅读排版（明暗两套，全部直角）；输出按 `force-dark-mode` / `force-light-mode` 适配深浅色。
 - 组件（`src/components/`）：ReadOnlyText（分块只读滚动浏览）、HtmlPreview（WebView，新增 `onSchemeRequest` 拦截自定义 scheme）、
   MarkdownEditor（仅受控模式，22 项笔记向工具栏预设，保留数学符号面板与锁定态）。
@@ -30,7 +30,7 @@ SlyWrite Lite 首个功能版本：完全本地、零账号、零 Token 的 Mark
   （主题模式、备份导出 / 导入 / 删除、存储统计、输入文字确认的清空全部笔记、关于）、未匹配路由兜底。
 - 空白笔记不留壳：新建后一个字都没写就返回，该篇直接删除（不进回收站），笔记本不会被空文件淹没。
 - 预览中的 http(s) 外链交系统浏览器打开，不会把笔记页替换掉；自定义 scheme 仍由 App 内双链跳转处理。
-- 应用图标：`src/assets/shephrdsLibraryWriteWithBackround.png`（`app.json` 引用所需，自 SlyWrite 资源目录复制一份，Lite 自持）。
+- 应用图标：`src/assets/shephrdsLibraryWriteWithBackround.png`（`app.json` 引用所需，Lite 自持一份）。
 
 ## 改进
 
@@ -53,7 +53,7 @@ SlyWrite Lite 首个功能版本：完全本地、零账号、零 Token 的 Mark
   生成的 `android/settings.gradle` 里没有该插件的 `includeBuild`，Gradle 报
   `Plugin [id: 'expo-module-gradle-plugin'] was not found`。
   改为 `~16.0.6` / `~2.1.2` 后重新生成锁文件，实际解到 `expo-image-picker@16.0.6` + `expo-image-loader@5.0.0`
-  （SDK 52 线，与 SlyWrite 主 App 一致）。
+  （SDK 52 线）。
 - `expo-modules-core@2.2.3` 的 `android/ExpoModulesCorePlugin.gradle:95` 在 `afterEvaluate` 里直接
   `from components.release`，AGP 8 下 release 组件尚未注册，配置 `project ':expo'` 时抛
   `Could not get unknown property 'release' for SoftwareComponent container`。

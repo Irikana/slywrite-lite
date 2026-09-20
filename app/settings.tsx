@@ -267,6 +267,9 @@ export default function SettingsPage() {
       <PressFX style={s.actionBtn} onPress={() => router.push('/updates')}>
         <Text style={s.actionBtnText}>检查更新</Text>
       </PressFX>
+      <PressFX style={s.actionBtn} onPress={() => router.push('/changelog')}>
+        <Text style={s.actionBtnText}>更新日志</Text>
+      </PressFX>
 
       <Modal visible={wipeVisible} transparent animationType="fade" onRequestClose={() => setWipeVisible(false)}>
         <View style={s.overlay}>
