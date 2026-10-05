@@ -95,10 +95,11 @@ export function parseNote(raw: string, file: string): Note {
   const tags = fields.tags !== undefined ? parseTags(fields.tags) : [];
 
   let created = (fields.created || '').trim();
-  if (!DATE_RE.test(created)) {
-    // 只有日期部分（如 YAML 输出 2026-09-11T00:00:00）截断后再验一次
-    const m = created.match(/^(\d{4}-\d{2}-\d{2})/);
-    created = m ? m[1] : todayDate();
+  if (DATETIME_RE.test(created)) {
+    created = created.replace('T', ' ');
+  } else if (!DATE_RE.test(created)) {
+    const m = created.match(/^(\d{4}-\d{2}-\d{2})[ T]?(\d{2}:\d{2})?/);
+    created = m ? (m[2] ? `${m[1]} ${m[2]}` : m[1]) : nowStamp();
   }
 
   let updated = (fields.updated || '').trim();
@@ -137,7 +138,7 @@ export function serializeNote(note: Note): string {
     '---',
     `title: ${title}`,
     `tags: [${tags.join(', ')}]`,
-    `created: ${DATE_RE.test(note.created) ? note.created : todayDate()}`,
+    `created: ${DATETIME_RE.test(note.created) || DATE_RE.test(note.created) ? note.created : nowStamp()}`,
     `updated: ${DATETIME_RE.test(note.updated) ? note.updated : nowStamp()}`,
     `status: ${STATUSES.includes(note.status) ? note.status : 'draft'}`,
     `pinned: ${note.pinned ? 'true' : 'false'}`,

@@ -143,7 +143,7 @@ export async function createNote(seed?: CreateSeed): Promise<Note> {
     file,
     title: (seed?.title || '').trim() || '未命名笔记',
     tags: seed?.tags || [],
-    created: todayDate(),
+    created: now,
     updated: now,
     status: seed?.status || 'draft',
     pinned: seed?.pinned || false,

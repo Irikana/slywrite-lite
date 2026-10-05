@@ -1,12 +1,8 @@
-// Markdown 笔记编辑器（受控模式 + 插入工具栏 + 数学符号面板）。
-// 与 SlyWrite 版本的差异：只支持受控（value + onChangeText 必填），不依赖任何全局 store；
-// 工具栏换成笔记向预设（待办、双链、高亮、日期等），去掉脚注按钮。
-// 插入交互：工具栏按钮插入后通过 setNativeProps 恢复光标位置并保持焦点；
-// 锁定态（editable=false）：整块换成 ReadOnlyText，可滑动浏览、绝对不可编辑。
-// （骨架取自 SlyWrite 同名组件，Lite 自持一份并按笔记场景改写。）
+// Markdown 笔记编辑器（受控模式 + 插入工具栏 + 模板选择 + 数学符号面板）
 import React, { useState } from 'react';
 import {
   Modal,
+  Platform,
   Pressable,
   ScrollView,
   StyleSheet,
@@ -14,18 +10,22 @@ import {
   TextInput,
   View,
 } from 'react-native';
+import { useRouter } from 'expo-router';
 import { FONT, SPACING, useTheme, type Palette } from '../theme';
 import { ReadOnlyText } from './ReadOnlyText';
+import { useTemplatesStore } from '../store/templates-store';
 
 interface InsertAction {
   label: string;
+  display?: string;
   insert: (before: string, selStart: number, selEnd: number) => { text: string; cursor: number };
 }
 
 /** 片段插入：§ 为光标落点，无 § 时光标在片段末尾 */
-function snippetAction(label: string, snippet: string): InsertAction {
+function snippetAction(label: string, snippet: string, display?: string): InsertAction {
   return {
     label,
+    display: display || label,
     insert: (b, s, e) => {
       const caret = snippet.indexOf('§');
       const clean = snippet.replace('§', '');
@@ -37,11 +37,12 @@ function snippetAction(label: string, snippet: string): InsertAction {
 
 /** 笔记向工具栏预设 */
 const NOTE_ACTIONS: InsertAction[] = [
-  { label: 'H1', insert: (b, s) => ({ text: b.slice(0, s) + '# ' + b.slice(s), cursor: s + 2 }) },
-  { label: 'H2', insert: (b, s) => ({ text: b.slice(0, s) + '## ' + b.slice(s), cursor: s + 3 }) },
-  { label: 'H3', insert: (b, s) => ({ text: b.slice(0, s) + '### ' + b.slice(s), cursor: s + 4 }) },
+  { label: 'H1', display: 'H1', insert: (b, s) => ({ text: b.slice(0, s) + '# ' + b.slice(s), cursor: s + 2 }) },
+  { label: 'H2', display: 'H2', insert: (b, s) => ({ text: b.slice(0, s) + '## ' + b.slice(s), cursor: s + 3 }) },
+  { label: 'H3', display: 'H3', insert: (b, s) => ({ text: b.slice(0, s) + '### ' + b.slice(s), cursor: s + 4 }) },
   {
     label: '加粗',
+    display: 'B',
     insert: (b, s, e) => {
       const sel = b.slice(s, e) || '加粗';
       return { text: b.slice(0, s) + `**${sel}**` + b.slice(e), cursor: s + 2 + sel.length };
@@ -49,6 +50,7 @@ const NOTE_ACTIONS: InsertAction[] = [
   },
   {
     label: '斜体',
+    display: 'I',
     insert: (b, s, e) => {
       const sel = b.slice(s, e) || '斜体';
       return { text: b.slice(0, s) + `*${sel}*` + b.slice(e), cursor: s + 1 + sel.length };
@@ -56,6 +58,7 @@ const NOTE_ACTIONS: InsertAction[] = [
   },
   {
     label: '高亮',
+    display: '===',
     insert: (b, s, e) => {
       const sel = b.slice(s, e) || '标记';
       return { text: b.slice(0, s) + `==${sel}==` + b.slice(e), cursor: s + 2 + sel.length };
@@ -63,6 +66,7 @@ const NOTE_ACTIONS: InsertAction[] = [
   },
   {
     label: '删除线',
+    display: 'S',
     insert: (b, s, e) => {
       const sel = b.slice(s, e) || '删除';
       return { text: b.slice(0, s) + `~~${sel}~~` + b.slice(e), cursor: s + 2 + sel.length };
@@ -70,29 +74,32 @@ const NOTE_ACTIONS: InsertAction[] = [
   },
   {
     label: '行内代码',
+    display: '</>',
     insert: (b, s, e) => {
       const sel = b.slice(s, e) || 'code';
       return { text: b.slice(0, s) + '`' + sel + '`' + b.slice(e), cursor: s + 1 + sel.length };
     },
   },
-  { label: '代码块', insert: (b, s) => snippetAction('代码块', '```js\n§\n```').insert(b, s, s) },
-  { label: '引用', insert: (b, s) => ({ text: b.slice(0, s) + '> ' + b.slice(s), cursor: s + 2 }) },
-  { label: '列表', insert: (b, s) => ({ text: b.slice(0, s) + '- ' + b.slice(s), cursor: s + 2 }) },
-  { label: '有序', insert: (b, s) => ({ text: b.slice(0, s) + '1. ' + b.slice(s), cursor: s + 3 }) },
-  { label: '待办', insert: (b, s) => ({ text: b.slice(0, s) + '- [ ] ' + b.slice(s), cursor: s + 6 }) },
-  { label: '已完成', insert: (b, s) => ({ text: b.slice(0, s) + '- [x] ' + b.slice(s), cursor: s + 6 }) },
+  { label: '代码块', display: '{ }', insert: (b, s) => snippetAction('代码块', '```js\n§\n```', '{ }').insert(b, s, s) },
+  { label: '引用', display: '”', insert: (b, s) => ({ text: b.slice(0, s) + '> ' + b.slice(s), cursor: s + 2 }) },
+  { label: '列表', display: '• -', insert: (b, s) => ({ text: b.slice(0, s) + '- ' + b.slice(s), cursor: s + 2 }) },
+  { label: '有序', display: '1.', insert: (b, s) => ({ text: b.slice(0, s) + '1. ' + b.slice(s), cursor: s + 3 }) },
+  { label: '待办', display: '☐ 待办', insert: (b, s) => ({ text: b.slice(0, s) + '- [ ] ' + b.slice(s), cursor: s + 6 }) },
+  { label: '已完成', display: '☑ 完成', insert: (b, s) => ({ text: b.slice(0, s) + '- [x] ' + b.slice(s), cursor: s + 6 }) },
   {
     label: '表格',
+    display: '⊞',
     insert: (b, s) =>
-      snippetAction('表格', '| 表头1 | 表头2 |\n| --- | --- |\n| §内容 | 内容 |').insert(b, s, s),
+      snippetAction('表格', '| 表头1 | 表头2 |\n| --- | --- |\n| §内容 | 内容 |', '⊞').insert(b, s, s),
   },
-  { label: '链接', insert: (b, s) => ({ text: b.slice(0, s) + '[文字](https://)' + b.slice(s), cursor: s + 9 }) },
-  { label: '双链', insert: (b, s) => ({ text: b.slice(0, s) + '[[另一篇笔记标题]]' + b.slice(s), cursor: s + 2 }) },
-  { label: '图片', insert: (b, s) => ({ text: b.slice(0, s) + '![图片描述](https://)' + b.slice(s), cursor: s + 20 }) },
-  { label: '分割线', insert: (b, s) => ({ text: b.slice(0, s) + '\n---\n' + b.slice(s), cursor: s + 5 }) },
-  { label: '备注块', insert: (b, s) => snippetAction('备注块', '> **备注**\n> §').insert(b, s, s) },
+  { label: '链接', display: '☍', insert: (b, s) => ({ text: b.slice(0, s) + '[文字](https://)' + b.slice(s), cursor: s + 9 }) },
+  { label: '双链', display: '[[ 链 ]]', insert: (b, s) => ({ text: b.slice(0, s) + '[[另一篇笔记标题]]' + b.slice(s), cursor: s + 2 }) },
+  { label: '图片', display: '◩', insert: (b, s) => ({ text: b.slice(0, s) + '![图片描述](https://)' + b.slice(s), cursor: s + 20 }) },
+  { label: '分割线', display: '—', insert: (b, s) => ({ text: b.slice(0, s) + '\n---\n' + b.slice(s), cursor: s + 5 }) },
+  { label: '备注块', display: '> 备注', insert: (b, s) => snippetAction('备注块', '> **备注**\n> §', '> 备注').insert(b, s, s) },
   {
     label: '日期',
+    display: '◷ 日期',
     insert: (b, s) => {
       const d = new Date();
       const t = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
@@ -101,6 +108,7 @@ const NOTE_ACTIONS: InsertAction[] = [
   },
   {
     label: '行内公式',
+    display: '$x$',
     insert: (b, s, e) => {
       const sel = b.slice(s, e) || '公式';
       return { text: b.slice(0, s) + `$${sel}$` + b.slice(e), cursor: s + 1 + sel.length };
@@ -108,6 +116,7 @@ const NOTE_ACTIONS: InsertAction[] = [
   },
   {
     label: '独立公式',
+    display: '$$',
     insert: (b, s, e) => {
       const sel = b.slice(s, e) || '公式';
       return { text: b.slice(0, s) + `$$\n${sel}\n$$` + b.slice(e), cursor: s + 3 + sel.length };
@@ -181,13 +190,9 @@ const SYMBOL_GROUPS: { title: string; items: { label: string; insert: string }[]
 ];
 
 export interface MarkdownEditorProps {
-  /** 受控值（必填：Lite 编辑器只有受控模式） */
   value: string;
-  /** 受控变更回调（必填） */
   onChangeText: (text: string) => void;
-  /** 是否可编辑（默认 true；false 时渲染 ReadOnlyText，可滑动不可编辑） */
   editable?: boolean;
-  /** 空态提示文案 */
   placeholder?: string;
 }
 
@@ -195,17 +200,20 @@ export function MarkdownEditor({
   value,
   onChangeText,
   editable = true,
-  placeholder = '在此撰写笔记（Markdown）…\n空行分段，上方工具栏可插入待办、双链、公式等片段',
+  placeholder = '在此撰写笔记（Markdown）…\n空行分段，点击上方工具栏插入格式或点击「≡ 模板」插入常用版式',
 }: MarkdownEditorProps) {
+  const router = useRouter();
   const { colors } = useTheme();
   const s = createStyles(colors);
   const inputRef = React.useRef<TextInput>(null);
   const selectionRef = React.useRef({ start: 0, end: 0 });
   const [symbolsVisible, setSymbolsVisible] = useState(false);
+  const [templatesVisible, setTemplatesVisible] = useState(false);
+
+  const templates = useTemplatesStore((st) => st.templates);
 
   const text = value;
 
-  /** 应用插入结果：更新文本 + 恢复光标（即使输入框短暂失焦也不丢位置） */
   const applyInsert = (next: string, cursor: number) => {
     onChangeText(next);
     selectionRef.current = { start: cursor, end: cursor };
@@ -223,7 +231,6 @@ export function MarkdownEditor({
     applyInsert(result, cursor);
   };
 
-  /** 插入符号片段（含 § 光标占位） */
   const insertSnippet = (snippet: string) => {
     const { start, end } = selectionRef.current;
     const caret = snippet.indexOf('§');
@@ -235,7 +242,6 @@ export function MarkdownEditor({
   return (
     <View style={s.container}>
       {!editable ? (
-        /* 锁定态：整块换成只读浏览视图（可滑动、不可编辑、工具栏不可用） */
         <ReadOnlyText
           text={text}
           mono
@@ -247,20 +253,40 @@ export function MarkdownEditor({
             <ScrollView
               horizontal
               showsHorizontalScrollIndicator={false}
-              // 键盘弹出时点击按钮一次即响应（不消费首次触摸），滑动不会误触
               keyboardShouldPersistTaps="handled"
             >
+              <Pressable
+                style={[s.toolBtn, s.toolBtnTemplates]}
+                onPress={() => setTemplatesVisible(true)}
+              >
+                <Text style={[s.toolText, s.toolTextAccent]}>≡ 模板</Text>
+              </Pressable>
+
               {NOTE_ACTIONS.map((a) => (
-                <Pressable key={a.label} style={s.toolBtn} onPress={() => handleInsert(a)}>
-                  <Text style={s.toolText}>{a.label}</Text>
+                <Pressable
+                  key={a.label}
+                  style={s.toolBtn}
+                  onPress={() => handleInsert(a)}
+                  accessibilityLabel={a.label}
+                >
+                  {a.display === 'B' ? (
+                    <Text style={[s.toolText, { fontWeight: '800' }]}>B</Text>
+                  ) : a.display === 'I' ? (
+                    <Text style={[s.toolText, { fontStyle: 'italic', fontWeight: '700' }]}>I</Text>
+                  ) : a.display === 'S' ? (
+                    <Text style={[s.toolText, { textDecorationLine: 'line-through' }]}>S</Text>
+                  ) : (
+                    <Text style={s.toolText}>{a.display || a.label}</Text>
+                  )}
                 </Pressable>
               ))}
+
               <Pressable style={[s.toolBtn, s.toolBtnSymbols]} onPress={() => setSymbolsVisible(true)}>
-                <Text style={s.toolText}>数学符号</Text>
+                <Text style={s.toolText}>∑ 符号</Text>
               </Pressable>
             </ScrollView>
           </View>
-          {/* 正文区域：TextInput multiline 自行管理滚动（不嵌套 ScrollView） */}
+
           <TextInput
             ref={inputRef}
             style={s.editor}
@@ -283,6 +309,64 @@ export function MarkdownEditor({
           <Text style={s.counter}>{text.length} 字</Text>
         </>
       )}
+
+      {/* 模板选择菜单弹窗 */}
+      <Modal
+        visible={templatesVisible}
+        transparent
+        animationType="slide"
+        onRequestClose={() => setTemplatesVisible(false)}
+      >
+        <View style={s.modalOverlay}>
+          <View style={s.modalPanel}>
+            <View style={s.modalHead}>
+              <Text style={s.modalTitle}>插入模板</Text>
+              <Pressable
+                style={s.manageLink}
+                onPress={() => {
+                  setTemplatesVisible(false);
+                  router.push('/templates');
+                }}
+              >
+                <Text style={s.manageLinkText}>管理模板 ↗</Text>
+              </Pressable>
+            </View>
+            <ScrollView style={s.modalScroll} keyboardShouldPersistTaps="handled">
+              {templates.length === 0 ? (
+                <View style={s.emptyTemplates}>
+                  <Text style={s.emptyTemplatesText}>暂无模板，可点右上角「管理模板」添加</Text>
+                </View>
+              ) : (
+                templates.map((tpl) => (
+                  <Pressable
+                    key={tpl.id}
+                    style={s.templateCard}
+                    onPress={() => {
+                      insertSnippet(tpl.content);
+                      setTemplatesVisible(false);
+                    }}
+                  >
+                    <View style={s.templateCardHead}>
+                      <Text style={s.templateCardTitle}>{tpl.title}</Text>
+                      <Text style={s.templateCardDate}>{tpl.updatedAt}</Text>
+                    </View>
+                    {tpl.description ? (
+                      <Text style={s.templateCardDesc}>{tpl.description}</Text>
+                    ) : null}
+                    <Text style={s.templateCardPreview} numberOfLines={2}>
+                      {tpl.content}
+                    </Text>
+                  </Pressable>
+                ))
+              )}
+            </ScrollView>
+            <Pressable style={s.closeBtn} onPress={() => setTemplatesVisible(false)}>
+              <Text style={s.closeBtnText}>关闭</Text>
+            </Pressable>
+          </View>
+        </View>
+      </Modal>
+
       {/* 数学符号面板 */}
       <Modal
         visible={symbolsVisible}
@@ -290,10 +374,10 @@ export function MarkdownEditor({
         animationType="slide"
         onRequestClose={() => setSymbolsVisible(false)}
       >
-        <View style={s.symbolOverlay}>
-          <View style={s.symbolPanel}>
-            <Text style={s.symbolTitle}>数学符号</Text>
-            <ScrollView style={s.symbolScroll} keyboardShouldPersistTaps="handled">
+        <View style={s.modalOverlay}>
+          <View style={s.modalPanel}>
+            <Text style={s.modalTitle}>数学符号</Text>
+            <ScrollView style={s.modalScroll} keyboardShouldPersistTaps="handled">
               {SYMBOL_GROUPS.map((g) => (
                 <View key={g.title}>
                   <Text style={s.symbolGroupTitle}>{g.title}</Text>
@@ -314,8 +398,8 @@ export function MarkdownEditor({
                 </View>
               ))}
             </ScrollView>
-            <Pressable style={s.symbolClose} onPress={() => setSymbolsVisible(false)}>
-              <Text style={s.symbolCloseText}>关闭</Text>
+            <Pressable style={s.closeBtn} onPress={() => setSymbolsVisible(false)}>
+              <Text style={s.closeBtnText}>关闭</Text>
             </Pressable>
           </View>
         </View>
@@ -338,12 +422,29 @@ const createStyles = (COLORS: Palette) =>
       borderWidth: 1,
       borderColor: COLORS.border,
       paddingVertical: 5,
-      paddingHorizontal: 12,
+      paddingHorizontal: 11,
       marginRight: SPACING.xs,
       backgroundColor: COLORS.bg,
+      justifyContent: 'center',
+      alignItems: 'center',
     },
-    toolBtnSymbols: { borderColor: COLORS.accent, backgroundColor: COLORS.infoBg },
-    toolText: { fontSize: 13, color: COLORS.accent, fontWeight: '500' },
+    toolBtnTemplates: {
+      borderColor: COLORS.accent,
+      backgroundColor: COLORS.infoBg,
+    },
+    toolBtnSymbols: {
+      borderColor: COLORS.border,
+      backgroundColor: COLORS.bg,
+    },
+    toolText: {
+      fontSize: 13,
+      color: COLORS.text,
+      fontWeight: '500',
+    },
+    toolTextAccent: {
+      color: COLORS.accent,
+      fontWeight: '600',
+    },
     editor: {
       flex: 1,
       padding: SPACING.md,
@@ -361,25 +462,87 @@ const createStyles = (COLORS: Palette) =>
       padding: SPACING.xs,
       backgroundColor: COLORS.bgSubtle,
     },
-    symbolOverlay: {
+    modalOverlay: {
       flex: 1,
       backgroundColor: 'rgba(0,0,0,0.4)',
       justifyContent: 'flex-end',
     },
-    symbolPanel: {
+    modalPanel: {
       backgroundColor: COLORS.bg,
       borderTopWidth: 1,
       borderColor: COLORS.border,
       maxHeight: '75%',
       padding: SPACING.md,
     },
-    symbolTitle: {
+    modalHead: {
+      flexDirection: 'row',
+      justifyContent: 'space-between',
+      alignItems: 'center',
+      marginBottom: SPACING.sm,
+    },
+    modalTitle: {
       fontSize: 16,
       fontWeight: '700',
       color: COLORS.text,
-      marginBottom: SPACING.sm,
     },
-    symbolScroll: { flexGrow: 0 },
+    manageLink: {
+      paddingVertical: 4,
+      paddingHorizontal: 8,
+      borderWidth: 1,
+      borderColor: COLORS.accent,
+      backgroundColor: COLORS.infoBg,
+    },
+    manageLinkText: {
+      fontSize: 12,
+      color: COLORS.accent,
+      fontWeight: '600',
+    },
+    modalScroll: {
+      maxHeight: 380,
+    },
+    templateCard: {
+      borderWidth: 1,
+      borderColor: COLORS.border,
+      backgroundColor: COLORS.bgSubtle,
+      padding: SPACING.sm,
+      marginBottom: SPACING.xs,
+    },
+    templateCardHead: {
+      flexDirection: 'row',
+      justifyContent: 'space-between',
+      alignItems: 'center',
+      marginBottom: 2,
+    },
+    templateCardTitle: {
+      fontSize: 14,
+      fontWeight: '600',
+      color: COLORS.text,
+      flex: 1,
+    },
+    templateCardDate: {
+      fontSize: 11,
+      color: COLORS.textLight,
+      marginLeft: SPACING.xs,
+    },
+    templateCardDesc: {
+      fontSize: 12,
+      color: COLORS.textSecondary,
+      marginBottom: 4,
+    },
+    templateCardPreview: {
+      fontFamily: Platform.OS === 'ios' ? 'Menlo' : 'monospace',
+      fontSize: 11,
+      color: COLORS.textLight,
+      lineHeight: 16,
+    },
+    emptyTemplates: {
+      padding: SPACING.lg,
+      alignItems: 'center',
+    },
+    emptyTemplatesText: {
+      fontSize: 13,
+      color: COLORS.textLight,
+    },
     symbolGroupTitle: {
       fontSize: 13,
       fontWeight: '600',
@@ -387,7 +550,11 @@ const createStyles = (COLORS: Palette) =>
       marginTop: SPACING.sm,
       marginBottom: SPACING.xs,
     },
-    symbolGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: SPACING.xs },
+    symbolGrid: {
+      flexDirection: 'row',
+      flexWrap: 'wrap',
+      gap: SPACING.xs,
+    },
     symbolBtn: {
       borderWidth: 1,
       borderColor: COLORS.border,
@@ -395,8 +562,12 @@ const createStyles = (COLORS: Palette) =>
       paddingHorizontal: 10,
       backgroundColor: COLORS.bgSubtle,
     },
-    symbolLabel: { fontSize: 12, color: COLORS.accent, fontFamily: FONT.mono },
-    symbolClose: {
+    symbolLabel: {
+      fontSize: 12,
+      color: COLORS.accent,
+      fontFamily: FONT.mono,
+    },
+    closeBtn: {
       marginTop: SPACING.md,
       borderWidth: 1,
       borderColor: COLORS.border,
@@ -404,5 +575,9 @@ const createStyles = (COLORS: Palette) =>
       alignItems: 'center',
       backgroundColor: COLORS.bgSubtle,
     },
-    symbolCloseText: { fontSize: 14, color: COLORS.textSecondary, fontWeight: '500' },
+    closeBtnText: {
+      fontSize: 14,
+      color: COLORS.textSecondary,
+      fontWeight: '500',
+    },
   });

@@ -238,6 +238,9 @@ export default function NotebookPage() {
         contentContainerStyle={s.listContent}
         ListFooterComponent={
           <View style={s.footer}>
+            <Pressable style={s.footerBtn} onPress={() => router.push('/templates')}>
+              <Text style={s.footerBtnText}>模板管理</Text>
+            </Pressable>
             <Pressable style={s.footerBtn} onPress={() => router.push('/recycle')}>
               <Text style={s.footerBtnText}>回收站</Text>
             </Pressable>

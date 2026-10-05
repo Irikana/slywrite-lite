@@ -533,13 +533,13 @@ export default function NotePage() {
       {/* 底部操作 */}
       <View style={s.bottomBar}>
         <PressFX style={s.bottomBtn} onPress={() => router.back()}>
-          <Text style={s.bottomBtnText}>返回</Text>
+          <Text style={s.bottomBtnText}>‹ 返回</Text>
         </PressFX>
         <PressFX style={[s.bottomBtn, s.bottomBtnDanger]} onPress={handleDelete}>
           <Text style={[s.bottomBtnText, s.bottomBtnTextDanger]}>删除</Text>
         </PressFX>
         <PressFX style={s.bottomBtn} onPress={() => setMenuVisible(true)}>
-          <Text style={s.bottomBtnText}>菜单</Text>
+          <Text style={s.bottomBtnText}>≡ 菜单</Text>
         </PressFX>
       </View>
 
